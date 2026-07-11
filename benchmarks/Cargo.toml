@@ -1,0 +1,27 @@
+[package]
+name = "benchmarks"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+thalassa = { path = "..", features = ["derive"] }
+tls_codec = "0.4"
+mls-spec = "2"
+
+[target.'cfg(not(all(any(target_arch = "wasm32", target_arch = "wasm64"), target_os = "unknown")))'.dev-dependencies]
+gungraun = "0.19.4"
+criterion = "0.8"
+
+[target.'cfg(not(any(target_env = "msvc", all(any(target_arch = "wasm32", target_arch = "wasm64"), target_os = "unknown"))))'.dev-dependencies]
+tikv-jemallocator = "0.7"
+
+[[bench]]
+name = "perf"
+harness = false
+path = "benches/perf.rs"
+
+[[bench]]
+name = "perf_instructions"
+harness = false
+path = "benches/perf_instructions.rs"

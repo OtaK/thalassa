@@ -1,0 +1,6 @@
+error: The `#[tlspl(discriminant = \"path::to::thing\")]` is missing.
+       It is a viral attribute, and if one variant uses a path discriminant, then ALL your variants must do so as well.
+  --> tests/derive/fail.enum_viral_discr.rs:15:5
+   |
+15 |     V2 {
+   |     ^^

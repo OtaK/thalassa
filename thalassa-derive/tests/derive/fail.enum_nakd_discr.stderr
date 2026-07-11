@@ -1,0 +1,16 @@
+error: This is a naked enum, you do not need to use the #[tlspl] attribute
+       to define discriminants, just set an explicit discriminant to your variants, like so
+
+       #[derive(thalassa::TlsplAll)]
+       #[repr(u8)]
+       enum MyEnum {
+           Variant1 = 0x12,
+           Variant2 = 0xAC,
+       }
+
+ --> tests/derive/fail.enum_nakd_discr.rs:1:10
+  |
+1 | #[derive(thalassa::TlsplAll)]
+  |          ^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the derive macro `thalassa::TlsplAll` (in Nightly builds, run with -Z macro-backtrace for more info)

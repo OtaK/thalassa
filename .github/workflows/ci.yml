@@ -1,0 +1,38 @@
+on: [push, pull_request]
+name: CI
+
+jobs:
+  check:
+    name: Check & Lints
+    runs-on: ubuntu-latest
+    steps:
+      - run: rustup toolchain add --profile=minimal stable
+      - run: rustup target add wasm32-unknown-unknown
+
+      - name: Checkout sources
+        uses: actions/checkout@v7
+
+      - name: Run cargo check
+        run: cargo check --workspace
+
+      - name: Run cargo check (WASM)
+        run: cargo check --workspace --target=wasm32-unknown-unknown
+
+      - name: Run cargo fmt
+        run: cargo fmt --all -- --check
+
+      - name: Run cargo clippy
+        run: cargo clippy --workspace -- -D warnings
+
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    steps:
+      - run: rustup toolchain add --profile=minimal stable
+      - run: rustup target add wasm32-unknown-unknown
+
+      - name: Checkout sources
+        uses: actions/checkout@v7
+
+      - name: Run cargo test
+        run: cargo test --all-features --workspace

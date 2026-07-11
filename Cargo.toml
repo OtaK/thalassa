@@ -1,0 +1,48 @@
+[package]
+name = "thalassa"
+version = "0.0.1-pre.0"
+edition = "2024"
+rust-version = "1.85"
+include = ["src/**/*", "LICENSE-*", "README.md"]
+description = "Implementation of the TLS presentation language data format defined in RFC8446"
+readme = "README.md"
+documentation = "https://docs.rs/thalassa"
+repository = "https://github.com/OtaK/thalassa"
+license = "MIT OR Apache-2.0"
+keywords = ["tlspl", "mls", "tls", "rfc8446"]
+categories = ["parser-implementations", "encoding", "wasm"]
+authors = ["Mathieu Amiot <amiot.mathieu@gmail.com>"]
+
+[lib]
+name = "thalassa"
+
+[package.metadata.docs.rs]
+features = [
+    "derive"
+]
+rustdoc-args = ["--cfg", "docsrs", "--generate-link-to-definition"]
+
+[workspace]
+members = [
+    "thalassa-derive",
+    "benchmarks"
+]
+exclude = ["fuzz"]
+resolver = "3"
+
+[features]
+default = []
+derive = ["dep:thalassa-derive"]
+
+[dependencies]
+thiserror = "2"
+simdutf8 = "0.1"
+parsio = { version = "0.0.1", features = ["std"] }
+thalassa-derive = { path = "./thalassa-derive", version = "0.0.1-pre.0", optional = true }
+
+[profile.bench]
+opt-level = 3
+debug = true
+lto = "thin"
+debug-assertions = false
+codegen-units = 1
