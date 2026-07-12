@@ -108,33 +108,48 @@ where
     }
 }
 
-impl<T: TlsplSize, U: TlsplSize> TlsplSize for (T, U) {
+impl<A, B> TlsplSize for (A, B)
+where
+    A: TlsplSize,
+    B: TlsplSize,
+{
     fn tlspl_serialized_len(&self) -> usize {
         self.0.tlspl_serialized_len() + self.1.tlspl_serialized_len()
     }
 }
 
-impl<T: TlsplSerialize, U: TlsplSerialize> TlsplSerialize for (T, U) {
+impl<A, B> TlsplSerialize for (A, B)
+where
+    A: TlsplSerialize,
+    B: TlsplSerialize,
+{
     fn tlspl_serialize_to<W: crate::io::Write>(&self, writer: &mut W) -> TlsplWriteResult<usize> {
         Ok(self.0.tlspl_serialize_to(writer)? + self.1.tlspl_serialize_to(writer)?)
     }
 }
 
-impl<'tlspl, T: TlsplDeserialize<'tlspl>, U: TlsplDeserialize<'tlspl>> TlsplDeserialize<'tlspl>
-    for (T, U)
+impl<'tlspl, A, B> TlsplDeserialize<'tlspl> for (A, B)
+where
+    A: TlsplDeserialize<'tlspl>,
+    B: TlsplDeserialize<'tlspl>,
 {
     fn tlspl_deserialize_from<R: crate::io::Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self>
     where
         Self: Sized + 'tlspl,
     {
         Ok((
-            T::tlspl_deserialize_from(reader)?,
-            U::tlspl_deserialize_from(reader)?,
+            A::tlspl_deserialize_from(reader)?,
+            B::tlspl_deserialize_from(reader)?,
         ))
     }
 }
 
-impl<T: TlsplSize, U: TlsplSize, V: TlsplSize> TlsplSize for (T, U, V) {
+impl<A, B, C> TlsplSize for (A, B, C)
+where
+    A: TlsplSize,
+    B: TlsplSize,
+    C: TlsplSize,
+{
     fn tlspl_serialized_len(&self) -> usize {
         self.0.tlspl_serialized_len()
             + self.1.tlspl_serialized_len()
@@ -142,7 +157,12 @@ impl<T: TlsplSize, U: TlsplSize, V: TlsplSize> TlsplSize for (T, U, V) {
     }
 }
 
-impl<T: TlsplSerialize, U: TlsplSerialize, V: TlsplSerialize> TlsplSerialize for (T, U, V) {
+impl<A, B, C> TlsplSerialize for (A, B, C)
+where
+    A: TlsplSerialize,
+    B: TlsplSerialize,
+    C: TlsplSerialize,
+{
     fn tlspl_serialize_to<W: crate::io::Write>(&self, writer: &mut W) -> TlsplWriteResult<usize> {
         Ok(self.0.tlspl_serialize_to(writer)?
             + self.1.tlspl_serialize_to(writer)?
@@ -150,17 +170,126 @@ impl<T: TlsplSerialize, U: TlsplSerialize, V: TlsplSerialize> TlsplSerialize for
     }
 }
 
-impl<'tlspl, T: TlsplDeserialize<'tlspl>, U: TlsplDeserialize<'tlspl>, V: TlsplDeserialize<'tlspl>>
-    TlsplDeserialize<'tlspl> for (T, U, V)
+impl<'tlspl, A, B, C> TlsplDeserialize<'tlspl> for (A, B, C)
+where
+    A: TlsplDeserialize<'tlspl>,
+    B: TlsplDeserialize<'tlspl>,
+    C: TlsplDeserialize<'tlspl>,
 {
     fn tlspl_deserialize_from<R: crate::io::Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self>
     where
         Self: Sized + 'tlspl,
     {
         Ok((
-            T::tlspl_deserialize_from(reader)?,
-            U::tlspl_deserialize_from(reader)?,
-            V::tlspl_deserialize_from(reader)?,
+            A::tlspl_deserialize_from(reader)?,
+            B::tlspl_deserialize_from(reader)?,
+            C::tlspl_deserialize_from(reader)?,
+        ))
+    }
+}
+
+impl<A, B, C, D> TlsplSize for (A, B, C, D)
+where
+    A: TlsplSize,
+    B: TlsplSize,
+    C: TlsplSize,
+    D: TlsplSize,
+{
+    fn tlspl_serialized_len(&self) -> usize {
+        self.0.tlspl_serialized_len()
+            + self.1.tlspl_serialized_len()
+            + self.2.tlspl_serialized_len()
+            + self.3.tlspl_serialized_len()
+    }
+}
+
+impl<A, B, C, D> TlsplSerialize for (A, B, C, D)
+where
+    A: TlsplSerialize,
+    B: TlsplSerialize,
+    C: TlsplSerialize,
+    D: TlsplSerialize,
+{
+    fn tlspl_serialize_to<W: crate::io::Write>(&self, writer: &mut W) -> TlsplWriteResult<usize> {
+        Ok(self.0.tlspl_serialize_to(writer)?
+            + self.1.tlspl_serialize_to(writer)?
+            + self.2.tlspl_serialize_to(writer)?
+            + self.3.tlspl_serialize_to(writer)?)
+    }
+}
+
+impl<'tlspl, A, B, C, D> TlsplDeserialize<'tlspl> for (A, B, C, D)
+where
+    A: TlsplDeserialize<'tlspl>,
+    B: TlsplDeserialize<'tlspl>,
+    C: TlsplDeserialize<'tlspl>,
+    D: TlsplDeserialize<'tlspl>,
+{
+    fn tlspl_deserialize_from<R: crate::io::Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self>
+    where
+        Self: Sized + 'tlspl,
+    {
+        Ok((
+            A::tlspl_deserialize_from(reader)?,
+            B::tlspl_deserialize_from(reader)?,
+            C::tlspl_deserialize_from(reader)?,
+            D::tlspl_deserialize_from(reader)?,
+        ))
+    }
+}
+
+impl<A, B, C, D, E> TlsplSize for (A, B, C, D, E)
+where
+    A: TlsplSize,
+    B: TlsplSize,
+    C: TlsplSize,
+    D: TlsplSize,
+    E: TlsplSize,
+{
+    fn tlspl_serialized_len(&self) -> usize {
+        self.0.tlspl_serialized_len()
+            + self.1.tlspl_serialized_len()
+            + self.2.tlspl_serialized_len()
+            + self.3.tlspl_serialized_len()
+            + self.4.tlspl_serialized_len()
+    }
+}
+
+impl<A, B, C, D, E> TlsplSerialize for (A, B, C, D, E)
+where
+    A: TlsplSerialize,
+    B: TlsplSerialize,
+    C: TlsplSerialize,
+    D: TlsplSerialize,
+    E: TlsplSerialize,
+{
+    fn tlspl_serialize_to<W: crate::io::Write>(&self, writer: &mut W) -> TlsplWriteResult<usize> {
+        Ok(self.0.tlspl_serialize_to(writer)?
+            + self.1.tlspl_serialize_to(writer)?
+            + self.2.tlspl_serialize_to(writer)?
+            + self.3.tlspl_serialize_to(writer)?
+            + self.4.tlspl_serialize_to(writer)?)
+    }
+}
+
+impl<'tlspl, A, B, C, D, E> TlsplDeserialize<'tlspl> for (A, B, C, D, E)
+where
+    A: TlsplDeserialize<'tlspl>,
+    B: TlsplDeserialize<'tlspl>,
+    C: TlsplDeserialize<'tlspl>,
+    D: TlsplDeserialize<'tlspl>,
+    E: TlsplDeserialize<'tlspl>,
+{
+    fn tlspl_deserialize_from<R: crate::io::Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self>
+    where
+        Self: Sized + 'tlspl,
+    {
+        Ok((
+            A::tlspl_deserialize_from(reader)?,
+            B::tlspl_deserialize_from(reader)?,
+            C::tlspl_deserialize_from(reader)?,
+            D::tlspl_deserialize_from(reader)?,
+            E::tlspl_deserialize_from(reader)?,
         ))
     }
 }

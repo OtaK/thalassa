@@ -2,7 +2,7 @@
 #![doc = include_str!("../README.md")]
 
 // Note: A lot of this is similar to tls_codec's derives, in an effort to ease migration between the derives/attrs
-//
+
 use darling::{
     FromField, FromVariant as _,
     ast::Fields,
@@ -12,7 +12,7 @@ use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::{quote, quote_spanned};
 use syn::{
-    Attribute, DeriveInput, Expr, ExprLit, ExprPath, GenericParam, Generics, Ident, Lit, Type,
+    Attribute, DeriveInput, Expr, ExprLit, ExprPath, GenericParam, Generics, Ident, Lit,
     parse_macro_input, parse_quote,
 };
 
@@ -86,7 +86,6 @@ struct FieldNamedRaw {
     // and rename the struct to FieldNamed (+ delete the other one)
     // #[darling(with = darling::util::require_ident)]
     ident: Option<Ident>,
-    ty: Type,
     #[darling(flatten)]
     attr: TlsplFieldAttrs,
 }
@@ -94,7 +93,6 @@ struct FieldNamedRaw {
 #[derive(Debug)]
 struct FieldNamed {
     ident: Ident,
-    ty: Type,
     attr: TlsplFieldAttrs,
 }
 
@@ -115,7 +113,6 @@ mod util {
             ident: fnr
                 .ident
                 .expect("Implementation error, named fields ALWAYS have an identifier"),
-            ty: fnr.ty,
             attr: fnr.attr,
         }
     }
@@ -162,7 +159,6 @@ impl TryFrom<&syn::Data> for StructNamedFields {
 #[derive(Debug, darling::FromField)]
 #[darling(attributes(tlspl))]
 struct FieldTuple {
-    ty: Type,
     #[darling(flatten)]
     attr: TlsplFieldAttrs,
 }
@@ -863,10 +859,11 @@ impl TlsplDeriveTarget {
                         return None;
                     }
 
+                    let ident = syn::Member::Unnamed(idx.into());
                     Some(if let Some(module_with) = &f.attr.with {
-                        quote_spanned! {f.span()=> #module_with::tlspl_serialize_to(&self.#idx, writer)? }
+                        quote_spanned! {f.span()=> #module_with::tlspl_serialize_to(&self.#ident, writer)? }
                     } else {
-                        quote_spanned! {f.span()=> self.#idx.tlspl_serialize_to(writer)? }
+                        quote_spanned! {f.span()=> self.#ident.tlspl_serialize_to(writer)? }
                     })
                 });
 
@@ -975,18 +972,15 @@ impl TlsplDeriveTarget {
                 let generics_augmented = augment_generics_with_lt(generics);
                 let (impl_generics, _, _) = generics_augmented.split_for_impl();
                 let (_, ty_generics, where_c) = generics.split_for_impl();
-                let member_calls = data.fields.iter().filter_map(|f| {
-                    if f.attr.skip.is_present() {
-                        return None;
-                    }
-
+                let member_calls = data.fields.iter().map(|f| {
                     let ident = f.ident.clone();
-                    let ty = f.ty.clone();
-                    Some(if let Some(module_with) = &f.attr.with {
-                        quote_spanned! {f.span()=> #ident: #module_with::tlspl_deserialize_from(reader)? }
+                    if f.attr.skip.is_present() {
+                        quote_spanned! { f.span()=> #ident: Default::default() }
+                    } else if let Some(with) = &f.attr.with {
+                        quote_spanned! { f.span()=> #ident: #with::tlspl_deserialize_from(reader)? }
                     } else {
-                        quote_spanned! {f.span()=> #ident: <#ty>::tlspl_deserialize_from(reader)? }
-                    })
+                        quote_spanned! { f.span()=> #ident: <_>::tlspl_deserialize_from(reader)? }
+                    }
                 });
 
                 quote_spanned! { *span=>
@@ -1010,17 +1004,14 @@ impl TlsplDeriveTarget {
                 let generics_augmented = augment_generics_with_lt(generics);
                 let (impl_generics, _, _) = generics_augmented.split_for_impl();
                 let (_, ty_generics, where_c) = generics.split_for_impl();
-                let member_calls = data.fields.iter().filter_map(|f| {
+                let member_calls = data.fields.iter().map(|f| {
                     if f.attr.skip.is_present() {
-                        return None;
-                    }
-
-                    let ty = f.ty.clone();
-                    Some(if let Some(module_with) = &f.attr.with {
-                        quote_spanned! {f.span()=> #module_with::tlspl_deserialize_from(reader)? }
+                        quote_spanned! { f.span()=> Default::default() }
+                    } else if let Some(with) = &f.attr.with {
+                        quote_spanned! { f.span()=> #with::tlspl_deserialize_from(reader)? }
                     } else {
-                        quote_spanned! {f.span()=> <#ty>::tlspl_deserialize_from(reader)? }
-                    })
+                        quote_spanned! { f.span()=> <_>::tlspl_deserialize_from(reader)? }
+                    }
                 });
 
                 quote_spanned! { *span=>
@@ -1028,9 +1019,7 @@ impl TlsplDeriveTarget {
                     impl #impl_generics ::thalassa::TlsplDeserialize<'tlspl> for #ident #ty_generics #where_c {
                         #[inline]
                         fn tlspl_deserialize_from<R: ::thalassa::io::Read<'tlspl>>(reader: &mut R) -> ::thalassa::error::TlsplReadResult<Self> where Self: Sized + 'tlspl {
-                            Ok(Self((
-                                #(#member_calls,)*
-                            )))
+                            Ok(Self(#(#member_calls,)*))
                         }
                     }
                 }
