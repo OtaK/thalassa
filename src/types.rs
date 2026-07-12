@@ -18,6 +18,15 @@ pub use integer::u24;
 // and 2^30-1 on 32 bits (which is the MLS limits)
 const MAX_LEN: usize = (usize::MAX >> 2) - 1;
 
+#[inline]
+/// Returns the TLS VarInt overhead for the provided content length
+///
+/// It's usually used to AoT compute the length of the sum of serialized things
+/// that are collated as a variable-length bytes thingy
+pub fn content_len_as_vlbytes(cl: usize) -> usize {
+    ContentLengthLength::from_content_len(cl) as u8 as usize
+}
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub(crate) enum ContentLengthLength {
