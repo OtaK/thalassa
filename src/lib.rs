@@ -24,10 +24,10 @@ impl<T: TlsplSize> TlsplSize for &T {
     }
 }
 
-pub trait TlsplDeserialize<'a>: TlsplSize {
-    fn tlspl_deserialize_from<R: Read<'a>>(reader: &mut R) -> TlsplReadResult<Self>
+pub trait TlsplDeserialize<'tlspl>: TlsplSize {
+    fn tlspl_deserialize_from<R: Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self>
     where
-        Self: Sized + 'a;
+        Self: Sized + 'tlspl;
 }
 
 pub trait TlsplSerialize: TlsplSize {

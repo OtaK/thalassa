@@ -37,7 +37,7 @@ derive = ["dep:thalassa-derive"]
 [dependencies]
 thiserror = "2"
 simdutf8 = "0.1"
-parsio = { version = "0.0.1", features = ["std"] }
+parsio = { version = "0.0.2", features = ["std"] }
 thalassa-derive = { path = "./thalassa-derive", version = "0.0.1-pre.2", optional = true }
 
 [profile.bench]

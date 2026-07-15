@@ -117,11 +117,11 @@ impl TlsplSerialize for bool {
     }
 }
 
-impl<'a> TlsplDeserialize<'a> for bool {
+impl<'tlspl> TlsplDeserialize<'tlspl> for bool {
     #[inline]
-    fn tlspl_deserialize_from<R: crate::io::Read<'a>>(reader: &mut R) -> TlsplReadResult<Self>
+    fn tlspl_deserialize_from<R: crate::io::Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self>
     where
-        Self: Sized + 'a,
+        Self: Sized + 'tlspl,
     {
         reader.read_byte().map(|b| b > 0).map_err(Into::into)
     }

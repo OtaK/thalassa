@@ -643,13 +643,61 @@ impl TlsplDeriveTarget {
     }
 }
 
+bitflags::bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    struct ImplTargets: u8 {
+        const SIZE = 1 << 0;
+        const SERIALIZE = 1 << 1;
+        const DESERIALIZE = 1 << 2;
+
+        const ALL = Self::SIZE.bits() | Self::SERIALIZE.bits() | Self::DESERIALIZE.bits();
+    }
+}
+
+fn augment_generics_ty(generics: &Generics, impl_targets: ImplTargets) -> Generics {
+    let mut generics = generics.clone();
+
+    for ty in generics.type_params_mut() {
+        if impl_targets.contains(ImplTargets::SIZE) {
+            let tlspl_size_bound = syn::TypeParamBound::Trait(parse_quote!(::thalassa::TlsplSize));
+            if ty.bounds.iter().all(|bound| bound != &tlspl_size_bound) {
+                ty.bounds.push(tlspl_size_bound);
+            }
+        }
+
+        if impl_targets.contains(ImplTargets::SERIALIZE) {
+            let tlspl_ser_bound =
+                syn::TypeParamBound::Trait(parse_quote!(::thalassa::TlsplSerialize));
+            if ty.bounds.iter().all(|bound| bound != &tlspl_ser_bound) {
+                ty.bounds.push(tlspl_ser_bound);
+            }
+        }
+
+        if impl_targets.contains(ImplTargets::DESERIALIZE) {
+            let tlspl_deser_bound =
+                syn::TypeParamBound::Trait(parse_quote!(::thalassa::TlsplDeserialize<'tlspl>));
+            if ty.bounds.iter().all(|bound| bound != &tlspl_deser_bound) {
+                ty.bounds.push(tlspl_deser_bound);
+            }
+
+            let tlspl_lt_bound = syn::TypeParamBound::Lifetime(parse_quote!('tlspl));
+            if ty.bounds.iter().all(|bound| bound != &tlspl_lt_bound) {
+                ty.bounds.push(tlspl_lt_bound);
+            }
+        }
+    }
+
+    generics
+}
+
 fn augment_generics_with_lt(generics: &Generics) -> Generics {
     let mut generics = generics.clone();
+
     if generics.lifetimes().next().is_none() {
         generics
             .params
             .push(GenericParam::Lifetime(parse_quote!('tlspl)));
-    } else {
+    } else if generics.lifetimes().all(|lt| lt.lifetime.ident != "tlspl") {
         let lifetimes = generics.lifetimes();
         generics.params.push(GenericParam::Lifetime(
             parse_quote!('tlspl: #(#lifetimes)+*),
@@ -691,7 +739,9 @@ impl TlsplDeriveTarget {
                 generics,
                 data,
             }) => {
+                let generics = augment_generics_ty(generics, ImplTargets::SIZE);
                 let (impl_generics, ty_generics, where_c) = generics.split_for_impl();
+
                 let member_calls = data.fields.iter().filter_map(|f| {
                     if f.attr.skip.is_present() {
                         return None;
@@ -704,6 +754,7 @@ impl TlsplDeriveTarget {
                         quote_spanned! {f.span()=> self.#ident.tlspl_serialized_len() }
                     })
                 });
+
                 quote_spanned! { *span=>
                     #[automatically_derived]
                     impl #impl_generics ::thalassa::TlsplSize for #ident #ty_generics #where_c {
@@ -720,7 +771,9 @@ impl TlsplDeriveTarget {
                 generics,
                 data,
             }) => {
+                let generics = augment_generics_ty(generics, ImplTargets::SIZE);
                 let (impl_generics, ty_generics, where_c) = generics.split_for_impl();
+
                 let member_calls = data.fields.iter().enumerate().filter_map(|(idx, f)| {
                     if f.attr.skip.is_present() {
                         return None;
@@ -733,6 +786,7 @@ impl TlsplDeriveTarget {
                         quote_spanned! { f.span()=> self.#ident.tlspl_serialized_len() }
                     })
                 });
+
                 quote_spanned! { *span=>
                     #[automatically_derived]
                     impl #impl_generics ::thalassa::TlsplSize for #ident #ty_generics #where_c {
@@ -748,6 +802,7 @@ impl TlsplDeriveTarget {
                 ident,
                 generics,
             }) => {
+                let generics = augment_generics_ty(generics, ImplTargets::SIZE);
                 let (impl_generics, ty_generics, where_c) = generics.split_for_impl();
 
                 quote_spanned! { *span=>
@@ -766,7 +821,11 @@ impl TlsplDeriveTarget {
                 data,
             }) => {
                 let repr = extract_repr_from_attrs(attrs)?;
+                let generics = augment_generics_ty(generics, ImplTargets::SIZE);
                 let (impl_generics, ty_generics, where_c) = generics.split_for_impl();
+                // let (_, ty_generics, where_c) = generics.split_for_impl();
+                // let (impl_generics, ty_generics, where_c) = generics.split_for_impl();
+                //
                 let field_arms = data.variants.iter().map(|variant| {
                     let span = variant.span();
                     let variant_ident = variant.ident();
@@ -821,7 +880,9 @@ impl TlsplDeriveTarget {
                 generics,
                 data,
             }) => {
+                let generics = augment_generics_ty(generics, ImplTargets::SERIALIZE);
                 let (impl_generics, ty_generics, where_c) = generics.split_for_impl();
+
                 let member_calls = data.fields.iter().filter_map(|f| {
                     if f.attr.skip.is_present() {
                         return None;
@@ -853,7 +914,9 @@ impl TlsplDeriveTarget {
                 generics,
                 data,
             }) => {
+                let generics = augment_generics_ty(generics, ImplTargets::SERIALIZE);
                 let (impl_generics, ty_generics, where_c) = generics.split_for_impl();
+
                 let member_calls = data.fields.iter().enumerate().filter_map(|(idx, f)| {
                     if f.attr.skip.is_present() {
                         return None;
@@ -884,7 +947,9 @@ impl TlsplDeriveTarget {
                 ident,
                 generics,
             }) => {
+                let generics = augment_generics_ty(generics, ImplTargets::SERIALIZE);
                 let (impl_generics, ty_generics, where_c) = generics.split_for_impl();
+
                 quote_spanned! { *span=>
                     #[automatically_derived]
                     impl #impl_generics ::thalassa::TlsplSerialize for #ident #ty_generics #where_c {
@@ -904,7 +969,9 @@ impl TlsplDeriveTarget {
                     data,
                     ..
                 } = target;
+                let generics = augment_generics_ty(generics, ImplTargets::SERIALIZE);
                 let (impl_generics, ty_generics, where_c) = generics.split_for_impl();
+
                 let field_arms = data.variants.iter().map(|variant| {
                     let span = variant.span();
                     let variant_is_tuple = matches!(variant, Variant::Tuple(_));
@@ -969,9 +1036,11 @@ impl TlsplDeriveTarget {
                 generics,
                 data,
             }) => {
-                let generics_augmented = augment_generics_with_lt(generics);
-                let (impl_generics, _, _) = generics_augmented.split_for_impl();
+                let ty_generics_def = augment_generics_ty(generics, ImplTargets::DESERIALIZE);
+                let impl_generics_def = augment_generics_with_lt(&ty_generics_def);
+                let (impl_generics, _, _) = impl_generics_def.split_for_impl();
                 let (_, ty_generics, where_c) = generics.split_for_impl();
+
                 let member_calls = data.fields.iter().map(|f| {
                     let ident = f.ident.clone();
                     if f.attr.skip.is_present() {
@@ -987,7 +1056,7 @@ impl TlsplDeriveTarget {
                     #[automatically_derived]
                     impl #impl_generics ::thalassa::TlsplDeserialize<'tlspl> for #ident #ty_generics #where_c {
                         #[inline]
-                        fn tlspl_deserialize_from<R: ::thalassa::io::Read<'tlspl>>(reader: &mut R) -> ::thalassa::error::TlsplReadResult<Self> where Self: Sized + 'tlspl {
+                        fn tlspl_deserialize_from<R: ::thalassa::io::Read<'tlspl>>(reader: &mut R) -> ::thalassa::error::TlsplReadResult<Self> {
                             Ok(Self {
                                 #(#member_calls,)*
                             })
@@ -1001,9 +1070,11 @@ impl TlsplDeriveTarget {
                 generics,
                 data,
             }) => {
-                let generics_augmented = augment_generics_with_lt(generics);
-                let (impl_generics, _, _) = generics_augmented.split_for_impl();
+                let ty_generics_def = augment_generics_ty(generics, ImplTargets::DESERIALIZE);
+                let impl_generics_def = augment_generics_with_lt(&ty_generics_def);
+                let (impl_generics, _, _) = impl_generics_def.split_for_impl();
                 let (_, ty_generics, where_c) = generics.split_for_impl();
+
                 let member_calls = data.fields.iter().map(|f| {
                     if f.attr.skip.is_present() {
                         quote_spanned! { f.span()=> Default::default() }
@@ -1018,7 +1089,7 @@ impl TlsplDeriveTarget {
                     #[automatically_derived]
                     impl #impl_generics ::thalassa::TlsplDeserialize<'tlspl> for #ident #ty_generics #where_c {
                         #[inline]
-                        fn tlspl_deserialize_from<R: ::thalassa::io::Read<'tlspl>>(reader: &mut R) -> ::thalassa::error::TlsplReadResult<Self> where Self: Sized + 'tlspl {
+                        fn tlspl_deserialize_from<R: ::thalassa::io::Read<'tlspl>>(reader: &mut R) -> ::thalassa::error::TlsplReadResult<Self> {
                             Ok(Self(#(#member_calls,)*))
                         }
                     }
@@ -1029,15 +1100,16 @@ impl TlsplDeriveTarget {
                 ident,
                 generics,
             }) => {
-                let generics_augmented = augment_generics_with_lt(generics);
-                let (impl_generics, _, _) = generics_augmented.split_for_impl();
+                let ty_generics_def = augment_generics_ty(generics, ImplTargets::DESERIALIZE);
+                let impl_generics_def = augment_generics_with_lt(&ty_generics_def);
+                let (impl_generics, _, _) = impl_generics_def.split_for_impl();
                 let (_, ty_generics, where_c) = generics.split_for_impl();
 
                 quote_spanned! { *span=>
                     #[automatically_derived]
                     impl #impl_generics ::thalassa::TlsplDeserialize<'tlspl> for #ident #ty_generics #where_c {
                         #[inline]
-                        fn tlspl_deserialize_from<R: ::thalassa::io::Read<'tlspl>>(reader: &mut R) -> ::thalassa::error::TlsplReadResult<Self> where Self: Sized + 'tlspl {
+                        fn tlspl_deserialize_from<R: ::thalassa::io::Read<'tlspl>>(reader: &mut R) -> ::thalassa::error::TlsplReadResult<Self> {
                             Ok(Self)
                         }
                     }
@@ -1053,9 +1125,11 @@ impl TlsplDeriveTarget {
                     attrs,
                 } = target;
                 let repr = extract_repr_from_attrs(attrs)?;
-                let generics_augmented = augment_generics_with_lt(generics);
-                let (impl_generics, _, _) = generics_augmented.split_for_impl();
+                let ty_generics_def = augment_generics_ty(generics, ImplTargets::DESERIALIZE);
+                let impl_generics_def = augment_generics_with_lt(&ty_generics_def);
+                let (impl_generics, _, _) = impl_generics_def.split_for_impl();
                 let (_, ty_generics, where_c) = generics.split_for_impl();
+
                 let variant_arms = data.variants.iter().map(|variant| {
                     let span = variant.span();
                     let variant_ident = variant.ident();
@@ -1094,7 +1168,7 @@ impl TlsplDeriveTarget {
                     #[automatically_derived]
                     impl #impl_generics ::thalassa::TlsplDeserialize<'tlspl> for #ident #ty_generics #where_c {
                         #[inline]
-                        fn tlspl_deserialize_from<R: ::thalassa::io::Read<'tlspl>>(reader: &mut R) -> ::thalassa::error::TlsplReadResult<Self> where Self: Sized + 'tlspl {
+                        fn tlspl_deserialize_from<R: ::thalassa::io::Read<'tlspl>>(reader: &mut R) -> ::thalassa::error::TlsplReadResult<Self> {
                             #discriminants_ts
                             let discriminant = <#repr>::from_be_bytes(*reader.read_array()?);
                             match discriminant {

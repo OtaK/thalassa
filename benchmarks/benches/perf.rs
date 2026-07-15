@@ -1,21 +1,91 @@
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
-use mls_spec::{
-    // credential::Credential,
-    // defs::{Capabilities, CiphersuiteId, ExtensionType, ProposalType},
-    // group::{
-    //     ExternalSender,
-    //     extensions::{Extension, RatchetTreeExtension},
-    // },
+use mls_spec2::{
+    credential::Credential,
+    defs::{Capabilities, CiphersuiteId, ExtensionType, ProposalType},
+    group::{
+        ExternalSender,
+        extensions::{Extension, RatchetTreeExtension},
+    },
     key_schedule::GroupContext,
-    // tree::{
-    //     TreeNode,
-    //     leaf_node::{LeafNode, LeafNodeSource},
-    // },
+    tree::{
+        TreeNode,
+        leaf_node::{LeafNode, LeafNodeSource},
+    },
 };
 use std::{borrow::Cow, hint::black_box};
+use thalassa::{TlsplDeserialize as _, TlsplSerialize};
+use tls_codec::Serialize as _;
 
-const GROUPCTX_SAMPLE: &'static [u8] = include_bytes!("sample.groupctx.tlspl");
-const VLBYTES_SAMPLE: &'static [u8] = include_bytes!("sample.vlbytes_100KB.tlspl");
+fn random_vec_with_len(len: usize) -> Vec<u8> {
+    let mut vec = vec![0u8; len];
+    rand::fill(&mut vec);
+    vec
+}
+
+fn generate_vlbytes() -> Vec<u8> {
+    random_vec_with_len(100_000).tlspl_serialize().unwrap()
+}
+
+fn generate_groupctx() -> Vec<u8> {
+    let mut test_gc = GroupContext::with_group_id(b"test".into());
+    test_gc.confirmed_transcript_hash = random_vec_with_len(32).into();
+    test_gc.epoch = rand::random();
+    test_gc.tree_hash = random_vec_with_len(32).into();
+    test_gc.cipher_suite = CiphersuiteId::new_unchecked(rand::random());
+    test_gc.extensions.push(Extension::RequiredCapabilities(
+        mls_spec2::group::RequiredCapabilities {
+            extension_types: vec![
+                ExtensionType::new_unchecked(rand::random()),
+                ExtensionType::new_unchecked(rand::random()),
+            ],
+            proposal_types: vec![
+                ProposalType::new_unchecked(rand::random()),
+                ProposalType::new_unchecked(rand::random()),
+            ],
+            credential_types: vec![],
+        },
+    ));
+
+    test_gc
+        .extensions
+        .push(Extension::ExternalSenders(vec![ExternalSender {
+            signature_key: random_vec_with_len(32).into(),
+            credential: Credential::basic(b"alice".into()),
+        }]));
+
+    let ratchet_tree = (0usize..1000)
+        .into_iter()
+        .map(|i| {
+            Some(TreeNode::LeafNode(LeafNode {
+                encryption_key: random_vec_with_len(32).into(),
+                signature_key: random_vec_with_len(32).into(),
+                credential: Credential::basic(format!("alice_{i}").into_bytes().into()),
+                capabilities: Capabilities {
+                    versions: Default::default(),
+                    ciphersuites: Default::default(),
+                    extensions: Default::default(),
+                    proposals: Default::default(),
+                    credentials: Default::default(),
+                },
+                source: LeafNodeSource::Commit {
+                    parent_hash: random_vec_with_len(32).into(),
+                },
+                extensions: vec![Extension::ApplicationId(random_vec_with_len(1024))],
+                signature: random_vec_with_len(32).into(),
+            }))
+        })
+        .collect::<Vec<_>>();
+
+    // Add 20k LeafNodes lol
+    test_gc
+        .extensions
+        .push(Extension::RatchetTree(RatchetTreeExtension {
+            ratchet_tree: ratchet_tree.into(),
+        }));
+
+    // get a sample of "known good" from tls_codec
+    test_gc.tls_serialize_detached().unwrap()
+}
 
 #[derive(
     Debug,
@@ -61,18 +131,23 @@ static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 fn bench_tls_codec<T: tls_codec::Serialize + tls_codec::Deserialize>(
     sample_name: &str,
-    sample: &[u8],
+    sample_generator: fn() -> Vec<u8>,
     c: &mut Criterion,
 ) {
-    let mut group = c.benchmark_group(&format!("{sample_name}/tls_codec"));
+    let sample = sample_generator();
+    let mut group = c.benchmark_group(&format!("{sample_name}({})/tls_codec", sample.len()));
     group.throughput(Throughput::Bytes(sample.len() as u64));
 
     group.bench_function("de", |b| {
-        b.iter(|| black_box(T::tls_deserialize(black_box(&mut &sample[..])).unwrap()));
+        b.iter_batched(
+            || black_box(sample_generator()),
+            |sample| black_box(T::tls_deserialize(black_box(&mut &sample[..])).unwrap()),
+            BatchSize::SmallInput,
+        );
     });
 
     group.bench_function("ser", |b| {
-        let value = T::tls_deserialize(&mut &sample[..]).unwrap();
+        let value = T::tls_deserialize(&mut &sample_generator()[..]).unwrap();
         let capacity = value.tls_serialized_len();
 
         b.iter_batched_ref(
@@ -85,25 +160,30 @@ fn bench_tls_codec<T: tls_codec::Serialize + tls_codec::Deserialize>(
     group.finish();
 }
 
-fn bench_thalassa<'a, T: thalassa::TlsplDeserialize<'a> + thalassa::TlsplSerialize + 'a>(
-    sample_name: &str,
-    sample: &'a [u8],
-    c: &mut Criterion,
-) {
-    let mut group = c.benchmark_group(&format!("{sample_name}/thalassa"));
-    group.throughput(Throughput::Bytes(sample.len() as u64));
+fn bench_thalassa_vlbytes(c: &mut Criterion) {
+    let value_len = generate_vlbytes().len();
+    let mut group = c.benchmark_group(&format!("vlbytes({value_len})/thalassa"));
+    group.throughput(Throughput::Bytes(value_len as u64));
 
-    // FIXME: I get 500TB/s on this. There's absolutely no way that's correct so, uh, maybe find a way?
     group.bench_function("de", |b| {
-        b.iter(|| black_box(T::tlspl_deserialize_from(black_box(&mut &sample[..])).unwrap()));
+        b.iter_batched(
+            || generate_vlbytes(),
+            |sample| {
+                let value = black_box(
+                    Cow::<[u8]>::tlspl_deserialize_from(black_box(&mut &sample[..])).unwrap(),
+                );
+
+                black_box(value[0])
+            },
+            BatchSize::SmallInput,
+        );
     });
 
     group.bench_function("ser", |b| {
-        let value = T::tlspl_deserialize_from(&mut &sample[..]).unwrap();
-        let capacity = value.tlspl_serialized_len();
-
+        let sample = generate_vlbytes();
+        let value = Cow::<[u8]>::tlspl_deserialize_from(&mut &sample[..]).unwrap();
         b.iter_batched_ref(
-            || black_box(Vec::with_capacity(black_box(capacity))),
+            || Vec::with_capacity(black_box(value_len)),
             |buf| black_box(value.tlspl_serialize_to(black_box(buf)).unwrap()),
             BatchSize::SmallInput,
         );
@@ -112,79 +192,48 @@ fn bench_thalassa<'a, T: thalassa::TlsplDeserialize<'a> + thalassa::TlsplSeriali
     group.finish();
 }
 
+fn bench_thalassa_groupctx(c: &mut Criterion) {
+    let value_len = generate_groupctx().len();
+    let mut group = c.benchmark_group(&format!("group_context({value_len})/thalassa"));
+    group.throughput(Throughput::Bytes(value_len as u64));
+
+    group.bench_function("de", |b| {
+        b.iter_batched(
+            || generate_groupctx(),
+            |sample| {
+                let value = black_box(
+                    ThalassaGroupContext::tlspl_deserialize_from(black_box(&mut &sample[..]))
+                        .unwrap(),
+                );
+
+                black_box(value.cipher_suite)
+            },
+            BatchSize::SmallInput,
+        );
+    });
+
+    group.bench_function("ser", |b| {
+        b.iter_batched_ref(
+            || {
+                (
+                    generate_groupctx(),
+                    Vec::with_capacity(black_box(value_len)),
+                )
+            },
+            |(value, buf)| black_box(value.tlspl_serialize_to(black_box(buf)).unwrap()),
+            BatchSize::SmallInput,
+        );
+    });
+
+    group.finish();
+}
+
 fn perf(c: &mut Criterion) {
-    // let mut test_gc = GroupContext::with_group_id(b"test".into());
-    // test_gc.confirmed_transcript_hash = vec![222u8; 32].into();
-    // test_gc.epoch = 80000000;
-    // test_gc.tree_hash = vec![111u8; 32].into();
-    // test_gc.cipher_suite = CiphersuiteId::new_unchecked(1);
-    // test_gc.extensions.push(Extension::RequiredCapabilities(
-    //     mls_spec::group::RequiredCapabilities {
-    //         extension_types: vec![
-    //             ExtensionType::new_unchecked(234),
-    //             ExtensionType::new_unchecked(235),
-    //         ],
-    //         proposal_types: vec![
-    //             ProposalType::new_unchecked(189),
-    //             ProposalType::new_unchecked(190),
-    //         ],
-    //         credential_types: vec![],
-    //     },
-    // ));
+    bench_tls_codec::<GroupContext>("group_context", generate_groupctx, c);
+    bench_thalassa_groupctx(c);
 
-    // test_gc
-    //     .extensions
-    //     .push(Extension::ExternalSenders(vec![ExternalSender {
-    //         signature_key: vec![22; 32].into(),
-    //         credential: Credential::basic(b"alice".into()),
-    //     }]));
-
-    // let tn = TreeNode::LeafNode(LeafNode {
-    //     encryption_key: vec![1; 32].into(),
-    //     signature_key: vec![1; 32].into(),
-    //     credential: Credential::basic(b"alice".into()),
-    //     capabilities: Capabilities {
-    //         versions: Default::default(),
-    //         ciphersuites: Default::default(),
-    //         extensions: Default::default(),
-    //         proposals: Default::default(),
-    //         credentials: Default::default(),
-    //     },
-    //     source: LeafNodeSource::Commit {
-    //         parent_hash: vec![9; 32].into(),
-    //     },
-    //     extensions: vec![Extension::ApplicationId(vec![u8::MAX; 1024])],
-    //     signature: vec![24; 32].into(),
-    // });
-
-    // // Add 20k LeafNodes lol
-    // test_gc
-    //     .extensions
-    //     .push(Extension::RatchetTree(RatchetTreeExtension {
-    //         ratchet_tree: vec![Some(tn); 20_000].into(),
-    //     }));
-
-    // // get a sample of "known good" from tls_codec
-    // let sample = test_gc.tls_serialize_detached().unwrap();
-    // let thalassa_gc = black_box(
-    //     ThalassaGroupContext::tlspl_deserialize_from(black_box(&mut &sample[..])).unwrap(),
-    // );
-
-    // assert_eq!(thalassa_gc.version as u16, test_gc.version as u16);
-    // assert_eq!(thalassa_gc.cipher_suite, *test_gc.cipher_suite);
-    // assert_eq!(&*thalassa_gc.group_id, test_gc.group_id());
-    // assert_eq!(thalassa_gc.epoch, test_gc.epoch);
-    // assert_eq!(&*thalassa_gc.tree_hash, test_gc.tree_hash.as_slice());
-    // assert_eq!(
-    //     &*thalassa_gc.confirmed_transcript_hash,
-    //     test_gc.confirmed_transcript_hash.as_slice()
-    // );
-
-    bench_tls_codec::<GroupContext>("group_context", GROUPCTX_SAMPLE, c);
-    bench_thalassa::<ThalassaGroupContext>("group_context", GROUPCTX_SAMPLE, c);
-
-    bench_tls_codec::<tls_codec::VLBytes>("vlbytes_100kb", VLBYTES_SAMPLE, c);
-    bench_thalassa::<Cow<[u8]>>("vlbytes_100kb", VLBYTES_SAMPLE, c);
+    bench_tls_codec::<tls_codec::VLBytes>("vlbytes", generate_vlbytes, c);
+    bench_thalassa_vlbytes(c);
 }
 
 criterion_group!(benches, perf);

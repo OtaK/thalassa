@@ -6,8 +6,9 @@ publish = false
 
 [dependencies]
 thalassa = { path = "..", features = ["derive"] }
+rand = "0.10"
 tls_codec = "0.4"
-mls-spec = "2"
+mls-spec2 = { package = "mls-spec", version = "2" }
 
 [target.'cfg(not(all(any(target_arch = "wasm32", target_arch = "wasm64"), target_os = "unknown")))'.dev-dependencies]
 gungraun = "0.19.4"

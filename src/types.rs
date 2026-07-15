@@ -23,13 +23,13 @@ const MAX_LEN: usize = (usize::MAX >> 2) - 1;
 ///
 /// It's usually used to AoT compute the length of the sum of serialized things
 /// that are collated as a variable-length bytes thingy
-pub fn content_len_as_vlbytes(cl: usize) -> usize {
+pub fn content_len_as_vlbytes_overhead(cl: usize) -> usize {
     ContentLengthLength::from_content_len(cl) as u8 as usize
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
-pub(crate) enum ContentLengthLength {
+pub enum ContentLengthLength {
     #[default]
     Empty = 0,
     Uint8 = 1,
@@ -37,6 +37,10 @@ pub(crate) enum ContentLengthLength {
     Uint32 = 4,
     Uint64 = 8,
 }
+
+const VARINT_U16_MARKER: u8 = 0x40;
+const VARINT_U32_MARKER: u8 = 0x80;
+const VARINT_U64_MARKER: u8 = 0xC0;
 
 impl ContentLengthLength {
     #[inline]
@@ -62,19 +66,23 @@ impl ContentLengthLength {
         cl: usize,
         writer: &mut W,
     ) -> crate::error::TlsplWriteResult<usize> {
+        if cl > MAX_LEN {
+            return Err(crate::error::TlsplWriteError::LengthOverflow);
+        }
+
         debug_assert_eq!(*self, Self::from_content_len(cl), "Internal API misuse");
 
         let result = match self {
             ContentLengthLength::Empty => Ok(0),
             ContentLengthLength::Uint8 => writer.write(&[cl as u8]),
             ContentLengthLength::Uint16 => {
-                writer.write(&((0x40_u16 << 8) | (cl as u16)).to_be_bytes())
+                writer.write(&(((VARINT_U16_MARKER as u16) << 8) | (cl as u16)).to_be_bytes())
             }
             ContentLengthLength::Uint32 => {
-                writer.write(&((0x80_u32 << 24) | (cl as u32)).to_be_bytes())
+                writer.write(&(((VARINT_U32_MARKER as u32) << 24) | (cl as u32)).to_be_bytes())
             }
             ContentLengthLength::Uint64 => {
-                writer.write(&((0xc0_u64 << 56) | (cl as u64)).to_be_bytes())
+                writer.write(&(((VARINT_U64_MARKER as u64) << 56) | (cl as u64)).to_be_bytes())
             }
         }
         .map_err(Into::into);
@@ -91,32 +99,22 @@ impl ContentLengthLength {
     #[inline]
     pub(crate) fn read_content_len<'a, R: Read<'a>>(
         reader: &mut R,
-    ) -> crate::error::TlsplReadResult<(Self, usize)> {
+    ) -> crate::error::TlsplReadResult<usize> {
         let lb = reader.read_byte()?;
-        let len = lb & 0x3F;
-        let cll_mult = lb >> 5;
-        // SAFETY: u8::MAX >> 5 caps out at 7; brought up to the next power of two, we get the following values:
-        // 0, 1, 2, 4, and 8, which all match a discriminant in [`ContentLengthLength`]
-        let cll =
-            unsafe { std::mem::transmute::<u8, ContentLengthLength>(cll_mult.next_power_of_two()) };
-        let len_usize = match cll {
-            ContentLengthLength::Uint8 => len as usize,
-            ContentLengthLength::Uint16 => {
-                ((len as u16) << 8 | reader.read_byte()? as u16) as usize
-            }
-            ContentLengthLength::Uint32 => {
-                let mut bytes = [len, 0, 0, 0];
-                bytes[1..].copy_from_slice(&reader.read_slice(3)?);
-                u32::from_be_bytes(bytes) as usize
-            }
-            ContentLengthLength::Uint64 => {
-                let mut bytes = [len, 0, 0, 0, 0, 0, 0, 0];
-                bytes[1..].copy_from_slice(&reader.read_slice(7)?);
-                u64::from_be_bytes(bytes).try_into()?
-            }
-            _ => 0,
-        };
-        Ok((cll, len_usize))
+        let len_fb = lb & 0x3F; // Mask the first byte as it'll be used like that in all branches
+        Ok(if lb < VARINT_U16_MARKER {
+            len_fb as usize
+        } else if lb < VARINT_U32_MARKER {
+            ((len_fb as u16) << 8 | reader.read_byte()? as u16) as usize
+        } else if lb < VARINT_U64_MARKER {
+            let mut bytes = [len_fb, 0, 0, 0];
+            bytes[1..].copy_from_slice(&reader.read_slice(3)?);
+            u32::from_be_bytes(bytes) as usize
+        } else {
+            let mut bytes = [len_fb, 0, 0, 0, 0, 0, 0, 0];
+            bytes[1..].copy_from_slice(&reader.read_slice(7)?);
+            u64::from_be_bytes(bytes).try_into()?
+        })
     }
 }
 
@@ -170,10 +168,7 @@ impl<'tlspl, T> TlsplDeserialize<'tlspl> for PhantomData<T> {
     #[inline]
     fn tlspl_deserialize_from<R: Read<'tlspl>>(
         _reader: &mut R,
-    ) -> crate::error::TlsplReadResult<Self>
-    where
-        Self: Sized + 'tlspl,
-    {
+    ) -> crate::error::TlsplReadResult<Self> {
         Ok(PhantomData)
     }
 }

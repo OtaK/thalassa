@@ -47,13 +47,13 @@ impl TlsplSerialize for String {
     }
 }
 
-impl<'a> TlsplDeserialize<'a> for Cow<'a, str> {
+impl<'tlspl> TlsplDeserialize<'tlspl> for Cow<'tlspl, str> {
     #[inline]
-    fn tlspl_deserialize_from<R: crate::io::Read<'a>>(reader: &mut R) -> TlsplReadResult<Self>
+    fn tlspl_deserialize_from<R: crate::io::Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self>
     where
-        Self: Sized + 'a,
+        Self: Sized + 'tlspl,
     {
-        let bytes = Cow::<'a, [u8]>::tlspl_deserialize_from(reader)?;
+        let bytes = Cow::<'tlspl, [u8]>::tlspl_deserialize_from(reader)?;
         Ok(match bytes {
             Cow::Borrowed(str) => Cow::Borrowed(simdutf8::basic::from_utf8(str)?),
             Cow::Owned(string) => {
@@ -66,11 +66,11 @@ impl<'a> TlsplDeserialize<'a> for Cow<'a, str> {
     }
 }
 
-impl<'a> TlsplDeserialize<'a> for String {
+impl<'tlspl> TlsplDeserialize<'tlspl> for String {
     #[inline]
-    fn tlspl_deserialize_from<R: crate::io::Read<'a>>(reader: &mut R) -> TlsplReadResult<Self>
+    fn tlspl_deserialize_from<R: crate::io::Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self>
     where
-        Self: Sized + 'a,
+        Self: Sized + 'tlspl,
     {
         Cow::<str>::tlspl_deserialize_from(reader).map(Cow::into_owned)
     }

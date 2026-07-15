@@ -31,12 +31,9 @@ impl<T: TlsplSerialize> TlsplSerialize for Option<T> {
     }
 }
 
-impl<'a, T: TlsplDeserialize<'a>> TlsplDeserialize<'a> for Option<T> {
+impl<'tlspl, T: TlsplDeserialize<'tlspl> + 'tlspl> TlsplDeserialize<'tlspl> for Option<T> {
     #[inline]
-    fn tlspl_deserialize_from<R: crate::io::Read<'a>>(reader: &mut R) -> TlsplReadResult<Self>
-    where
-        Self: Sized + 'a,
-    {
+    fn tlspl_deserialize_from<R: crate::io::Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self> {
         (reader.read_byte()? >= 0x01)
             .then(|| T::tlspl_deserialize_from(reader))
             .transpose()

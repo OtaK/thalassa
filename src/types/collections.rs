@@ -36,7 +36,6 @@ impl<T: TlsplSize> TlsplSize for Vec<T> {
     }
 }
 
-// TODO: Once specialization lands, add an impl for &[u8] to avoid the iter.fold bs. In that case we can just call slice.len()
 impl<T: TlsplSerialize> TlsplSerialize for &[T] {
     #[inline]
     fn tlspl_serialize_to<W: crate::io::Write>(&self, writer: &mut W) -> TlsplWriteResult<usize> {
@@ -63,15 +62,7 @@ where
     where
         Self: Sized + 'a,
     {
-        let (_, length) = ContentLengthLength::read_content_len(reader)?;
-        let mut checkpointed_reader = reader.checkpoint();
-        let mut values = Vec::with_capacity(4);
-        while checkpointed_reader.amt_read() < length {
-            let item = T::tlspl_deserialize_from(&mut checkpointed_reader)?;
-            values.push(item);
-        }
-
-        Ok(Cow::Owned(values))
+        Vec::<T>::tlspl_deserialize_from(reader).map(Cow::Owned)
     }
 }
 
@@ -83,7 +74,7 @@ where
     fn tlspl_serialize_to<W: crate::io::Write>(&self, writer: &mut W) -> TlsplWriteResult<usize> {
         match self {
             Cow::Borrowed(slice) => slice.tlspl_serialize_to(writer),
-            Cow::Owned(vec) => vec.as_slice().tlspl_serialize_to(writer),
+            Cow::Owned(vec) => vec.tlspl_serialize_to(writer),
         }
     }
 }
@@ -95,16 +86,73 @@ impl<T: TlsplSerialize> TlsplSerialize for Vec<T> {
     }
 }
 
-impl<'a, T: TlsplDeserialize<'a> + 'a> TlsplDeserialize<'a> for Vec<T>
-where
-    [T]: ToOwned<Owned = Vec<T>>,
+impl<'a, T: TlsplDeserialize<'a> + 'a> TlsplDeserialize<'a> for Vec<T> {
+    #[inline]
+    fn tlspl_deserialize_from<R: crate::io::Read<'a>>(reader: &mut R) -> TlsplReadResult<Self>
+    where
+        Self: Sized + 'a,
+    {
+        let length = ContentLengthLength::read_content_len(reader)?;
+        let mut amt_read = 0usize;
+        let mut values = Vec::with_capacity(4);
+        while amt_read < length {
+            let item = T::tlspl_deserialize_from(reader)?;
+            amt_read += item.tlspl_serialized_len();
+            values.push(item);
+        }
+
+        Ok(values)
+    }
+}
+
+impl<K: TlsplSize, V: TlsplSize> TlsplSize for std::collections::BTreeMap<K, V> {
+    fn tlspl_serialized_len(&self) -> usize {
+        let cl = self
+            .iter()
+            .map(|(k, v)| k.tlspl_serialized_len() + v.tlspl_serialized_len())
+            .sum();
+        let cll = ContentLengthLength::from_content_len(cl);
+        cll as u8 as usize + cl
+    }
+}
+
+impl<K: TlsplSerialize, V: TlsplSerialize> TlsplSerialize for std::collections::BTreeMap<K, V> {
+    fn tlspl_serialize_to<W: parsio::Write>(&self, writer: &mut W) -> TlsplWriteResult<usize> {
+        let cl = self
+            .iter()
+            .map(|(k, v)| k.tlspl_serialized_len() + v.tlspl_serialized_len())
+            .sum();
+        let cll = ContentLengthLength::from_content_len(cl);
+        let mut written = cll.write_content_len(cl, writer)?;
+        for pair in self.iter() {
+            written += pair.tlspl_serialize_to(writer)?
+        }
+
+        Ok(written)
+    }
+}
+
+impl<'a, K: TlsplDeserialize<'a> + 'a + Ord, V: TlsplDeserialize<'a> + 'a> TlsplDeserialize<'a>
+    for std::collections::BTreeMap<K, V>
 {
     #[inline]
     fn tlspl_deserialize_from<R: crate::io::Read<'a>>(reader: &mut R) -> TlsplReadResult<Self>
     where
         Self: Sized + 'a,
     {
-        Cow::<[T]>::tlspl_deserialize_from(reader).map(Cow::into_owned)
+        let length = ContentLengthLength::read_content_len(reader)?;
+        let mut amt_read = 0usize;
+        let mut pairs = Self::default();
+        while amt_read < length {
+            let k = K::tlspl_deserialize_from(reader)?;
+            let v = V::tlspl_deserialize_from(reader)?;
+
+            amt_read += k.tlspl_serialized_len() + v.tlspl_serialized_len();
+
+            pairs.insert(k, v);
+        }
+
+        Ok(pairs)
     }
 }
 
@@ -130,13 +178,10 @@ where
 
 impl<'tlspl, A, B> TlsplDeserialize<'tlspl> for (A, B)
 where
-    A: TlsplDeserialize<'tlspl>,
-    B: TlsplDeserialize<'tlspl>,
+    A: TlsplDeserialize<'tlspl> + 'tlspl,
+    B: TlsplDeserialize<'tlspl> + 'tlspl,
 {
-    fn tlspl_deserialize_from<R: crate::io::Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self>
-    where
-        Self: Sized + 'tlspl,
-    {
+    fn tlspl_deserialize_from<R: crate::io::Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self> {
         Ok((
             A::tlspl_deserialize_from(reader)?,
             B::tlspl_deserialize_from(reader)?,
@@ -172,14 +217,11 @@ where
 
 impl<'tlspl, A, B, C> TlsplDeserialize<'tlspl> for (A, B, C)
 where
-    A: TlsplDeserialize<'tlspl>,
-    B: TlsplDeserialize<'tlspl>,
-    C: TlsplDeserialize<'tlspl>,
+    A: TlsplDeserialize<'tlspl> + 'tlspl,
+    B: TlsplDeserialize<'tlspl> + 'tlspl,
+    C: TlsplDeserialize<'tlspl> + 'tlspl,
 {
-    fn tlspl_deserialize_from<R: crate::io::Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self>
-    where
-        Self: Sized + 'tlspl,
-    {
+    fn tlspl_deserialize_from<R: crate::io::Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self> {
         Ok((
             A::tlspl_deserialize_from(reader)?,
             B::tlspl_deserialize_from(reader)?,
@@ -220,15 +262,12 @@ where
 
 impl<'tlspl, A, B, C, D> TlsplDeserialize<'tlspl> for (A, B, C, D)
 where
-    A: TlsplDeserialize<'tlspl>,
-    B: TlsplDeserialize<'tlspl>,
-    C: TlsplDeserialize<'tlspl>,
-    D: TlsplDeserialize<'tlspl>,
+    A: TlsplDeserialize<'tlspl> + 'tlspl,
+    B: TlsplDeserialize<'tlspl> + 'tlspl,
+    C: TlsplDeserialize<'tlspl> + 'tlspl,
+    D: TlsplDeserialize<'tlspl> + 'tlspl,
 {
-    fn tlspl_deserialize_from<R: crate::io::Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self>
-    where
-        Self: Sized + 'tlspl,
-    {
+    fn tlspl_deserialize_from<R: crate::io::Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self> {
         Ok((
             A::tlspl_deserialize_from(reader)?,
             B::tlspl_deserialize_from(reader)?,
@@ -274,16 +313,13 @@ where
 
 impl<'tlspl, A, B, C, D, E> TlsplDeserialize<'tlspl> for (A, B, C, D, E)
 where
-    A: TlsplDeserialize<'tlspl>,
-    B: TlsplDeserialize<'tlspl>,
-    C: TlsplDeserialize<'tlspl>,
-    D: TlsplDeserialize<'tlspl>,
-    E: TlsplDeserialize<'tlspl>,
+    A: TlsplDeserialize<'tlspl> + 'tlspl,
+    B: TlsplDeserialize<'tlspl> + 'tlspl,
+    C: TlsplDeserialize<'tlspl> + 'tlspl,
+    D: TlsplDeserialize<'tlspl> + 'tlspl,
+    E: TlsplDeserialize<'tlspl> + 'tlspl,
 {
-    fn tlspl_deserialize_from<R: crate::io::Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self>
-    where
-        Self: Sized + 'tlspl,
-    {
+    fn tlspl_deserialize_from<R: crate::io::Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self> {
         Ok((
             A::tlspl_deserialize_from(reader)?,
             B::tlspl_deserialize_from(reader)?,

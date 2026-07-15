@@ -21,6 +21,7 @@ proc-macro2 = "1"
 quote = "1"
 syn = "2"
 darling = "0.23"
+bitflags = "2"
 
 [dev-dependencies]
 thalassa = { path = "..", features = ["derive"] }

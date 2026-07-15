@@ -28,21 +28,21 @@ impl<'a, const N: usize> TlsplSize for Cow<'a, [u8; N]> {
 }
 
 /// Reads N bytes, not VLBytes!
-impl<'a, const N: usize> TlsplDeserialize<'a> for Cow<'a, [u8; N]> {
+impl<'tlspl, const N: usize> TlsplDeserialize<'tlspl> for Cow<'tlspl, [u8; N]> {
     #[inline]
-    fn tlspl_deserialize_from<R: crate::io::Read<'a>>(reader: &mut R) -> TlsplReadResult<Self>
+    fn tlspl_deserialize_from<R: crate::io::Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self>
     where
-        Self: Sized + 'a,
+        Self: Sized + 'tlspl,
     {
         reader.read_array().map_err(Into::into)
     }
 }
 
-impl<'a, const N: usize> TlsplDeserialize<'a> for [u8; N] {
+impl<'tlspl, const N: usize> TlsplDeserialize<'tlspl> for [u8; N] {
     #[inline]
-    fn tlspl_deserialize_from<R: crate::io::Read<'a>>(reader: &mut R) -> TlsplReadResult<Self>
+    fn tlspl_deserialize_from<R: crate::io::Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self>
     where
-        Self: Sized + 'a,
+        Self: Sized + 'tlspl,
     {
         reader.read_array().map(|cow| *cow).map_err(Into::into)
     }
@@ -95,22 +95,22 @@ impl TlsplSerialize for Vec<u8> {
     }
 }
 
-impl<'a> TlsplDeserialize<'a> for Cow<'a, [u8]> {
+impl<'tlspl> TlsplDeserialize<'tlspl> for Cow<'tlspl, [u8]> {
     #[inline]
-    fn tlspl_deserialize_from<R: crate::io::Read<'a>>(reader: &mut R) -> TlsplReadResult<Self>
+    fn tlspl_deserialize_from<R: crate::io::Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self>
     where
-        Self: Sized + 'a,
+        Self: Sized + 'tlspl,
     {
-        let (_, length) = ContentLengthLength::read_content_len(reader)?;
+        let length = ContentLengthLength::read_content_len(reader)?;
         reader.read_slice(length).map_err(Into::into)
     }
 }
 
-impl<'a> TlsplDeserialize<'a> for Vec<u8> {
+impl<'tlspl> TlsplDeserialize<'tlspl> for Vec<u8> {
     #[inline]
-    fn tlspl_deserialize_from<R: crate::io::Read<'a>>(reader: &mut R) -> TlsplReadResult<Self>
+    fn tlspl_deserialize_from<R: crate::io::Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self>
     where
-        Self: Sized + 'a,
+        Self: Sized + 'tlspl,
     {
         Cow::<[u8]>::tlspl_deserialize_from(reader).map(Cow::into_owned)
     }
