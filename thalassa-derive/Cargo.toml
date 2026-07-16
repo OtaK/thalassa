@@ -1,6 +1,6 @@
 [package]
 name = "thalassa-derive"
-version = "0.0.1-pre.3"
+version = "0.0.1-pre.4"
 edition = "2024"
 rust-version = "1.85"
 include = ["src/**/*", "LICENSE-*", "README.md"]
