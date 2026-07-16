@@ -449,6 +449,7 @@ enum MyEnum {
                     let const_id = discr_const_ident(variant_ident);
 
                     Ok(quote! {
+                        #[allow(non_upper_case_globals)]
                         const #const_id: #repr = #enum_ident::#variant_ident as #repr;
                     })
                 })
@@ -510,6 +511,7 @@ It is a viral attribute, and if one variant uses a path discriminant, then ALL y
                         if path_used {
                             return Err(path_used_err(&span));
                         }
+
                         implicit_discr = value;
 
                         quote_spanned! { span=>
@@ -861,6 +863,7 @@ impl TlsplDeriveTarget {
                     #[automatically_derived]
                     impl #impl_generics thalassa::TlsplSize for #ident #ty_generics #where_c {
                         #[inline]
+                        #[allow(clippy::identity_op)]
                         fn tlspl_serialized_len(&self) -> usize {
                             core::mem::size_of::<#repr>() + match self {
                                 #(#field_arms)*
@@ -1016,6 +1019,7 @@ impl TlsplDeriveTarget {
                     #[automatically_derived]
                     impl #impl_generics thalassa::TlsplSerialize for #ident #ty_generics #where_c {
                         #[inline]
+                        #[allow(clippy::identity_op)]
                         fn tlspl_serialize_to<W: thalassa::io::Write>(&self, writer: &mut W) -> thalassa::error::TlsplWriteResult<usize> {
                             #discriminants_ts
                             Ok(match self {
@@ -1168,6 +1172,7 @@ impl TlsplDeriveTarget {
                     #[automatically_derived]
                     impl #impl_generics thalassa::TlsplDeserialize<'tlspl> for #ident #ty_generics #where_c {
                         #[inline]
+                        #[allow(clippy::identity_op)]
                         fn tlspl_deserialize_from<R: thalassa::io::Read<'tlspl>>(reader: &mut R) -> thalassa::error::TlsplReadResult<Self> {
                             #discriminants_ts
                             let discriminant = <#repr>::from_be_bytes(*reader.read_array()?);
