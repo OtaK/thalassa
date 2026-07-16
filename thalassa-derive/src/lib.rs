@@ -659,7 +659,7 @@ fn augment_generics_ty(generics: &Generics, impl_targets: ImplTargets) -> Generi
 
     for ty in generics.type_params_mut() {
         if impl_targets.contains(ImplTargets::SIZE) {
-            let tlspl_size_bound = syn::TypeParamBound::Trait(parse_quote!(::thalassa::TlsplSize));
+            let tlspl_size_bound = syn::TypeParamBound::Trait(parse_quote!(thalassa::TlsplSize));
             if ty.bounds.iter().all(|bound| bound != &tlspl_size_bound) {
                 ty.bounds.push(tlspl_size_bound);
             }
@@ -667,7 +667,7 @@ fn augment_generics_ty(generics: &Generics, impl_targets: ImplTargets) -> Generi
 
         if impl_targets.contains(ImplTargets::SERIALIZE) {
             let tlspl_ser_bound =
-                syn::TypeParamBound::Trait(parse_quote!(::thalassa::TlsplSerialize));
+                syn::TypeParamBound::Trait(parse_quote!(thalassa::TlsplSerialize));
             if ty.bounds.iter().all(|bound| bound != &tlspl_ser_bound) {
                 ty.bounds.push(tlspl_ser_bound);
             }
@@ -675,7 +675,7 @@ fn augment_generics_ty(generics: &Generics, impl_targets: ImplTargets) -> Generi
 
         if impl_targets.contains(ImplTargets::DESERIALIZE) {
             let tlspl_deser_bound =
-                syn::TypeParamBound::Trait(parse_quote!(::thalassa::TlsplDeserialize<'tlspl>));
+                syn::TypeParamBound::Trait(parse_quote!(thalassa::TlsplDeserialize<'tlspl>));
             if ty.bounds.iter().all(|bound| bound != &tlspl_deser_bound) {
                 ty.bounds.push(tlspl_deser_bound);
             }
@@ -757,7 +757,7 @@ impl TlsplDeriveTarget {
 
                 quote_spanned! { *span=>
                     #[automatically_derived]
-                    impl #impl_generics ::thalassa::TlsplSize for #ident #ty_generics #where_c {
+                    impl #impl_generics thalassa::TlsplSize for #ident #ty_generics #where_c {
                         #[inline]
                         fn tlspl_serialized_len(&self) -> usize {
                             0 #(+ #member_calls)*
@@ -789,7 +789,7 @@ impl TlsplDeriveTarget {
 
                 quote_spanned! { *span=>
                     #[automatically_derived]
-                    impl #impl_generics ::thalassa::TlsplSize for #ident #ty_generics #where_c {
+                    impl #impl_generics thalassa::TlsplSize for #ident #ty_generics #where_c {
                         #[inline]
                         fn tlspl_serialized_len(&self) -> usize {
                             0 #(+ #member_calls)*
@@ -807,7 +807,7 @@ impl TlsplDeriveTarget {
 
                 quote_spanned! { *span=>
                     #[automatically_derived]
-                    impl #impl_generics ::thalassa::TlsplSize for #ident #ty_generics #where_c {
+                    impl #impl_generics thalassa::TlsplSize for #ident #ty_generics #where_c {
                         #[inline]
                         fn tlspl_serialized_len(&self) -> usize { 0 }
                     }
@@ -859,7 +859,7 @@ impl TlsplDeriveTarget {
 
                 quote_spanned! { *span=>
                     #[automatically_derived]
-                    impl #impl_generics ::thalassa::TlsplSize for #ident #ty_generics #where_c {
+                    impl #impl_generics thalassa::TlsplSize for #ident #ty_generics #where_c {
                         #[inline]
                         fn tlspl_serialized_len(&self) -> usize {
                             core::mem::size_of::<#repr>() + match self {
@@ -898,9 +898,9 @@ impl TlsplDeriveTarget {
 
                 quote_spanned! { *span=>
                     #[automatically_derived]
-                    impl #impl_generics ::thalassa::TlsplSerialize for #ident #ty_generics #where_c {
+                    impl #impl_generics thalassa::TlsplSerialize for #ident #ty_generics #where_c {
                         #[inline]
-                        fn tlspl_serialize_to<W: ::thalassa::io::Write>(&self, writer: &mut W) -> ::thalassa::error::TlsplWriteResult<usize> {
+                        fn tlspl_serialize_to<W: thalassa::io::Write>(&self, writer: &mut W) -> thalassa::error::TlsplWriteResult<usize> {
                             let mut written = 0;
                             #(written += #member_calls;)*
                             Ok(written)
@@ -932,9 +932,9 @@ impl TlsplDeriveTarget {
 
                 quote_spanned! { *span=>
                     #[automatically_derived]
-                    impl #impl_generics ::thalassa::TlsplSerialize for #ident #ty_generics #where_c {
+                    impl #impl_generics thalassa::TlsplSerialize for #ident #ty_generics #where_c {
                         #[inline]
-                        fn tlspl_serialize_to<W: ::thalassa::io::Write>(&self, writer: &mut W) -> ::thalassa::error::TlsplWriteResult<usize> {
+                        fn tlspl_serialize_to<W: thalassa::io::Write>(&self, writer: &mut W) -> thalassa::error::TlsplWriteResult<usize> {
                             let mut written = 0;
                             #(written += #member_calls;)*
                             Ok(written)
@@ -952,9 +952,9 @@ impl TlsplDeriveTarget {
 
                 quote_spanned! { *span=>
                     #[automatically_derived]
-                    impl #impl_generics ::thalassa::TlsplSerialize for #ident #ty_generics #where_c {
+                    impl #impl_generics thalassa::TlsplSerialize for #ident #ty_generics #where_c {
                         #[inline]
-                        fn tlspl_serialize_to<W: ::thalassa::io::Write>(&self, writer: &mut W) -> ::thalassa::error::TlsplWriteResult<usize> {
+                        fn tlspl_serialize_to<W: thalassa::io::Write>(&self, writer: &mut W) -> thalassa::error::TlsplWriteResult<usize> {
                             Ok(0)
                         }
                     }
@@ -1014,9 +1014,9 @@ impl TlsplDeriveTarget {
 
                 quote_spanned! { *span=>
                     #[automatically_derived]
-                    impl #impl_generics ::thalassa::TlsplSerialize for #ident #ty_generics #where_c {
+                    impl #impl_generics thalassa::TlsplSerialize for #ident #ty_generics #where_c {
                         #[inline]
-                        fn tlspl_serialize_to<W: ::thalassa::io::Write>(&self, writer: &mut W) -> ::thalassa::error::TlsplWriteResult<usize> {
+                        fn tlspl_serialize_to<W: thalassa::io::Write>(&self, writer: &mut W) -> thalassa::error::TlsplWriteResult<usize> {
                             #discriminants_ts
                             Ok(match self {
                                 #(#field_arms)*
@@ -1054,9 +1054,9 @@ impl TlsplDeriveTarget {
 
                 quote_spanned! { *span=>
                     #[automatically_derived]
-                    impl #impl_generics ::thalassa::TlsplDeserialize<'tlspl> for #ident #ty_generics #where_c {
+                    impl #impl_generics thalassa::TlsplDeserialize<'tlspl> for #ident #ty_generics #where_c {
                         #[inline]
-                        fn tlspl_deserialize_from<R: ::thalassa::io::Read<'tlspl>>(reader: &mut R) -> ::thalassa::error::TlsplReadResult<Self> {
+                        fn tlspl_deserialize_from<R: thalassa::io::Read<'tlspl>>(reader: &mut R) -> thalassa::error::TlsplReadResult<Self> {
                             Ok(Self {
                                 #(#member_calls,)*
                             })
@@ -1087,9 +1087,9 @@ impl TlsplDeriveTarget {
 
                 quote_spanned! { *span=>
                     #[automatically_derived]
-                    impl #impl_generics ::thalassa::TlsplDeserialize<'tlspl> for #ident #ty_generics #where_c {
+                    impl #impl_generics thalassa::TlsplDeserialize<'tlspl> for #ident #ty_generics #where_c {
                         #[inline]
-                        fn tlspl_deserialize_from<R: ::thalassa::io::Read<'tlspl>>(reader: &mut R) -> ::thalassa::error::TlsplReadResult<Self> {
+                        fn tlspl_deserialize_from<R: thalassa::io::Read<'tlspl>>(reader: &mut R) -> thalassa::error::TlsplReadResult<Self> {
                             Ok(Self(#(#member_calls,)*))
                         }
                     }
@@ -1107,9 +1107,9 @@ impl TlsplDeriveTarget {
 
                 quote_spanned! { *span=>
                     #[automatically_derived]
-                    impl #impl_generics ::thalassa::TlsplDeserialize<'tlspl> for #ident #ty_generics #where_c {
+                    impl #impl_generics thalassa::TlsplDeserialize<'tlspl> for #ident #ty_generics #where_c {
                         #[inline]
-                        fn tlspl_deserialize_from<R: ::thalassa::io::Read<'tlspl>>(reader: &mut R) -> ::thalassa::error::TlsplReadResult<Self> {
+                        fn tlspl_deserialize_from<R: thalassa::io::Read<'tlspl>>(reader: &mut R) -> thalassa::error::TlsplReadResult<Self> {
                             Ok(Self)
                         }
                     }
@@ -1166,14 +1166,14 @@ impl TlsplDeriveTarget {
 
                 quote_spanned! { *span=>
                     #[automatically_derived]
-                    impl #impl_generics ::thalassa::TlsplDeserialize<'tlspl> for #ident #ty_generics #where_c {
+                    impl #impl_generics thalassa::TlsplDeserialize<'tlspl> for #ident #ty_generics #where_c {
                         #[inline]
-                        fn tlspl_deserialize_from<R: ::thalassa::io::Read<'tlspl>>(reader: &mut R) -> ::thalassa::error::TlsplReadResult<Self> {
+                        fn tlspl_deserialize_from<R: thalassa::io::Read<'tlspl>>(reader: &mut R) -> thalassa::error::TlsplReadResult<Self> {
                             #discriminants_ts
                             let discriminant = <#repr>::from_be_bytes(*reader.read_array()?);
                             match discriminant {
                                 #(#variant_arms)*
-                                _ => Err(::thalassa::error::TlsplReadError::UnknownEnumDiscriminant(discriminant.into()))
+                                _ => Err(thalassa::error::TlsplReadError::UnknownEnumDiscriminant(discriminant.into()))
                             }
                         }
                     }
