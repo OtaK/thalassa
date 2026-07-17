@@ -6,6 +6,9 @@ use thalassa_derive::{TlsplDeserialize, TlsplSerialize, TlsplSize};
 struct FiveFieldTupleStruct(u32, u64, i16, bool, Option<()>);
 
 #[derive(Debug, TlsplDeserialize, TlsplSerialize, TlsplSize)]
+struct ThreeFieldTupleStruct(u8, u128, i8);
+
+#[derive(Debug, TlsplDeserialize, TlsplSerialize, TlsplSize)]
 struct TwoFieldTupleStruct(u32, u64);
 
 #[derive(Debug, TlsplDeserialize, TlsplSerialize, TlsplSize)]

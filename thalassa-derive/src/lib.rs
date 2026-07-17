@@ -12,7 +12,7 @@ use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::{quote, quote_spanned};
 use syn::{
-    Attribute, DeriveInput, Expr, ExprLit, ExprPath, GenericParam, Generics, Ident, Lit,
+    Attribute, DeriveInput, Expr, ExprLit, ExprPath, GenericParam, Generics, Ident, Lit, Type,
     parse_macro_input, parse_quote,
 };
 
@@ -86,6 +86,7 @@ struct FieldNamedRaw {
     // and rename the struct to FieldNamed (+ delete the other one)
     // #[darling(with = darling::util::require_ident)]
     ident: Option<Ident>,
+    ty: Type,
     #[darling(flatten)]
     attr: TlsplFieldAttrs,
 }
@@ -93,6 +94,7 @@ struct FieldNamedRaw {
 #[derive(Debug)]
 struct FieldNamed {
     ident: Ident,
+    ty: Type,
     attr: TlsplFieldAttrs,
 }
 
@@ -113,6 +115,7 @@ mod util {
             ident: fnr
                 .ident
                 .expect("Implementation error, named fields ALWAYS have an identifier"),
+            ty: fnr.ty,
             attr: fnr.attr,
         }
     }
@@ -159,6 +162,7 @@ impl TryFrom<&syn::Data> for StructNamedFields {
 #[derive(Debug, darling::FromField)]
 #[darling(attributes(tlspl))]
 struct FieldTuple {
+    ty: Type,
     #[darling(flatten)]
     attr: TlsplFieldAttrs,
 }
@@ -336,6 +340,7 @@ enum Variant {
 struct MemberWithAttrs<'a> {
     span: Span,
     ident: Ident,
+    ty: Type,
     attr_with: Option<&'a ExprPath>,
     attr_skip: bool,
 }
@@ -380,6 +385,7 @@ impl Variant {
                 Box::new(variant_named.fields.iter().map(|f| MemberWithAttrs {
                     span: f.span(),
                     ident: f.ident.clone(),
+                    ty: f.ty.clone(),
                     attr_with: f.attr.with.as_ref(),
                     attr_skip: f.attr.skip.is_present(),
                 }))
@@ -390,6 +396,7 @@ impl Variant {
                     MemberWithAttrs {
                         ident: Ident::new(&format!("tuple{idx}"), f.span()),
                         span,
+                        ty: f.ty.clone(),
                         attr_with: f.attr.with.as_ref(),
                         attr_skip: f.attr.skip.is_present(),
                     }
@@ -752,6 +759,8 @@ impl TlsplDeriveTarget {
                     let ident = f.ident.clone();
                     Some(if let Some(module_with) = &f.attr.with {
                         quote_spanned! {f.span()=> #module_with::tlspl_serialized_len(&self.#ident) }
+                    } else if f.ty == parse_quote!(u8) {
+                        quote_spanned! {f.span()=> 1 }
                     } else {
                         quote_spanned! {f.span()=> self.#ident.tlspl_serialized_len() }
                     })
@@ -784,6 +793,8 @@ impl TlsplDeriveTarget {
                     let ident = syn::Member::Unnamed(idx.into());
                     Some(if let Some(module_with) = &f.attr.with {
                         quote_spanned! { f.span()=> #module_with::tlspl_serialized_len(&self.#ident) }
+                    } else if f.ty == parse_quote!(u8) {
+                        quote_spanned! {f.span()=> 1 }
                     } else {
                         quote_spanned! { f.span()=> self.#ident.tlspl_serialized_len() }
                     })
@@ -841,6 +852,8 @@ impl TlsplDeriveTarget {
                         let ident = member.ident;
                         let method_mapping = if let Some(with) = member.attr_with {
                             quote_spanned! { member.span=> #with::tlspl_serialized_len(&#ident) }
+                        } else if member.ty == parse_quote!(u8) {
+                            quote_spanned! { member.span=> 1 }
                         } else {
                             quote_spanned! { member.span=> #ident.tlspl_serialized_len() }
                         };
@@ -894,6 +907,8 @@ impl TlsplDeriveTarget {
                     let ident = f.ident.clone();
                     Some(if let Some(module_with) = &f.attr.with {
                         quote_spanned! {f.span()=> #module_with::tlspl_serialize_to(&self.#ident, writer)? }
+                    } else if f.ty == parse_quote!(u8) {
+                        quote_spanned! {f.span()=> writer.write(&[self.#ident])? }
                     } else {
                         quote_spanned! {f.span()=> self.#ident.tlspl_serialize_to(writer)? }
                     })
@@ -928,6 +943,8 @@ impl TlsplDeriveTarget {
                     let ident = syn::Member::Unnamed(idx.into());
                     Some(if let Some(module_with) = &f.attr.with {
                         quote_spanned! {f.span()=> #module_with::tlspl_serialize_to(&self.#ident, writer)? }
+                    } else if f.ty == parse_quote!(u8) {
+                        quote_spanned! {f.span()=> writer.write(&[self.#ident])? }
                     } else {
                         quote_spanned! {f.span()=> self.#ident.tlspl_serialize_to(writer)? }
                     })
@@ -990,6 +1007,8 @@ impl TlsplDeriveTarget {
                             let ident = member.ident;
                             let method_mapping = if let Some(with) = member.attr_with {
                                 quote_spanned! { member.span=> #with::tlspl_serialize_to(&#ident, writer)? }
+                            } else if member.ty == parse_quote!(u8) {
+                                quote_spanned! { member.span=> writer.write(&[#ident])? }
                             } else {
                                 quote_spanned! { member.span=> #ident.tlspl_serialize_to(writer)? }
                             };
@@ -1051,6 +1070,8 @@ impl TlsplDeriveTarget {
                         quote_spanned! { f.span()=> #ident: Default::default() }
                     } else if let Some(with) = &f.attr.with {
                         quote_spanned! { f.span()=> #ident: #with::tlspl_deserialize_from(reader)? }
+                    } else if f.ty == parse_quote!(u8) {
+                        quote_spanned! {f.span()=> #ident: reader.read_byte()? }
                     } else {
                         quote_spanned! { f.span()=> #ident: <_>::tlspl_deserialize_from(reader)? }
                     }
@@ -1084,6 +1105,8 @@ impl TlsplDeriveTarget {
                         quote_spanned! { f.span()=> Default::default() }
                     } else if let Some(with) = &f.attr.with {
                         quote_spanned! { f.span()=> #with::tlspl_deserialize_from(reader)? }
+                    } else if f.ty == parse_quote!(u8) {
+                        quote_spanned! {f.span()=> reader.read_byte()? }
                     } else {
                         quote_spanned! { f.span()=> <_>::tlspl_deserialize_from(reader)? }
                     }
@@ -1146,6 +1169,8 @@ impl TlsplDeriveTarget {
                                 quote_spanned! { member.span=> Default::default() }
                             } else if let Some(with) = member.attr_with {
                                 quote_spanned! { member.span=> #with::tlspl_deserialize_from(reader)? }
+                            }  else if member.ty == parse_quote!(u8) {
+                                quote_spanned! { member.span=> reader.read_byte()? }
                             } else {
                                 quote_spanned! { member.span=> <_>::tlspl_deserialize_from(reader)? }
                             };
