@@ -16,14 +16,6 @@ pub trait TlsplSize {
     fn tlspl_serialized_len(&self) -> usize;
 }
 
-// Blanket impl
-impl<T: TlsplSize> TlsplSize for &T {
-    #[inline]
-    fn tlspl_serialized_len(&self) -> usize {
-        (*self).tlspl_serialized_len()
-    }
-}
-
 pub trait TlsplDeserialize<'tlspl>: TlsplSize {
     fn tlspl_deserialize_from<R: Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self>
     where
@@ -42,10 +34,41 @@ pub trait TlsplSerialize: TlsplSize {
     }
 }
 
-// Blanket impl
+// Blanket impls
+impl<T: TlsplSize> TlsplSize for &T {
+    #[inline]
+    fn tlspl_serialized_len(&self) -> usize {
+        (*self).tlspl_serialized_len()
+    }
+}
+
+impl<T: TlsplSize> TlsplSize for Box<T> {
+    #[inline]
+    fn tlspl_serialized_len(&self) -> usize {
+        self.as_ref().tlspl_serialized_len()
+    }
+}
+
+impl<'tlspl, T: TlsplDeserialize<'tlspl>> TlsplDeserialize<'tlspl> for Box<T> {
+    #[inline]
+    fn tlspl_deserialize_from<R: Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self>
+    where
+        Self: Sized + 'tlspl,
+    {
+        T::tlspl_deserialize_from(reader).map(Box::new)
+    }
+}
+
 impl<T: TlsplSerialize> TlsplSerialize for &T {
     #[inline]
     fn tlspl_serialize_to<W: Write>(&self, writer: &mut W) -> TlsplWriteResult<usize> {
         (*self).tlspl_serialize_to(writer)
+    }
+}
+
+impl<T: TlsplSerialize> TlsplSerialize for Box<T> {
+    #[inline]
+    fn tlspl_serialize_to<W: Write>(&self, writer: &mut W) -> TlsplWriteResult<usize> {
+        self.as_ref().tlspl_serialize_to(writer)
     }
 }
