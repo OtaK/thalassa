@@ -5,6 +5,7 @@ use crate::error::{TlsplReadResult, TlsplWriteResult};
 
 pub mod error;
 pub mod types;
+pub mod util;
 
 pub use parsio as io;
 

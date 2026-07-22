@@ -1,0 +1,23 @@
+error: Untagged enums REQUIRE to have all of their custom discriminants pointing to paths (eg: `#[tlspl(discriminant = "OtherEnum::Variant")]`
+ --> tests/derive/fail.enum_untagged.rs:3:17
+  |
+3 | #[derive(Debug, thalassa::TlsplSize)]
+  |                 ^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the derive macro `thalassa::TlsplSize` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: Untagged enums REQUIRE to have all of their custom discriminants pointing to paths (eg: `#[tlspl(discriminant = "OtherEnum::Variant")]`
+  --> tests/derive/fail.enum_untagged.rs:24:17
+   |
+24 | #[derive(Debug, thalassa::TlsplSize)]
+   |                 ^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this error originates in the derive macro `thalassa::TlsplSize` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: Untagged enums REQUIRE to have all of their custom discriminants pointing to paths (eg: `#[tlspl(discriminant = "OtherEnum::Variant")]`
+  --> tests/derive/fail.enum_untagged.rs:33:17
+   |
+33 | #[derive(Debug, thalassa::TlsplSize)]
+   |                 ^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this error originates in the derive macro `thalassa::TlsplSize` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -10,10 +10,10 @@ use darling::{
 };
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
-use quote::{quote, quote_spanned};
+use quote::{format_ident, quote, quote_spanned};
 use syn::{
     Attribute, DeriveInput, Expr, ExprLit, ExprPath, GenericParam, Generics, Ident, Lit, Type,
-    parse_macro_input, parse_quote,
+    parse_macro_input, parse_quote, spanned::Spanned,
 };
 
 use crate::util::from_field_named_raw_to_actual;
@@ -40,6 +40,18 @@ impl darling::FromMeta for DiscriminantTarget {
 }
 
 #[derive(Debug, darling::FromMeta)]
+struct TlsplEnumContainerAttrs {
+    /// Marks that this enum contents should not be de/serialized preceded by their
+    /// discriminant. This is especially useful when using the `#[tlspl(select)]` attribute
+    untagged: Flag,
+    /// This marks an enum as "extensible", meaning that the contents of the variants (eg. its fields) will be serialized
+    /// as a variable-length bytes container, to ensure that it can be extended, serialized and deserialized
+    /// even in the case of future evolutions or downstream-defined extensions. This is inspired by how MLS (RFC9420)
+    /// Extensions are done.
+    extensible: Flag,
+}
+
+#[derive(Debug, Clone, darling::FromMeta)]
 struct TlsplFieldAttrs {
     /// Custom serialization pointing to a module that has any of those 3 functions:
     /// - tlspl_serialized_len(&T) -> usize
@@ -48,35 +60,73 @@ struct TlsplFieldAttrs {
     with: Option<ExprPath>,
     /// Skip this field (requires [`Default`] since serialization has fixed layout)
     skip: Flag,
-    #[allow(dead_code)]
-    /// Distant variant - WIP
-    discriminant_for: Option<Ident>,
+    /// A derive feature made to ease the implementation of TLSPL structures
+    /// that look like the code below (example section cont.). This mirrors the
+    /// `select` keyword in TLSPL prose found in specifications.
+    ///
+    /// ### Restrictions
+    ///
+    /// 1. The targeted field must be declared *BEFORE* this field. The order of declaration matters in TLSPL.
+    /// 2. The type of the field with this attribute must be an enum that has `#[tlspl(untagged)]`
+    ///
+    /// ### Example
+    ///
+    /// ```rust,ignore
+    /// #[derive(TlsplAll)]
+    /// #[repr(u8)]
+    /// pub enum FieldDiscriminant {
+    ///     Variant1 = 0x01,
+    ///     Variant2 = 0x02,
+    /// }
+    ///
+    /// #[derive(TlsplAll)]
+    /// #[tlspl(untagged)]
+    /// pub enum FieldContents {
+    ///     #[tlspl(discriminant = "FieldDiscriminant::Variant1")]
+    ///     Variant1,
+    ///     #[tlspl(discriminant = "FieldDiscriminant::Variant2")]
+    ///     Variant2 {
+    ///         thing: bool,
+    ///     }
+    /// }
+    ///
+    /// #[derive(TlsplAll)]
+    /// pub struct ComplexStructure<'a> {
+    ///     pub field_type: FieldDiscriminant,
+    ///     pub unrelated_field: u64,
+    ///     pub another_field: Cow<'a, [u8]>,
+    ///     #[tlspl(select = field_type)]
+    ///     pub field_contents: FieldContents,
+    /// }
+    /// ```
+    #[darling(default, map = Some)]
+    select: Option<Expr>,
 }
 
 #[derive(Debug, darling::FromMeta)]
-struct TlsplVariantAttrs {
+struct TlsplEnumVariantAttrs {
     /// Custom enum discriminant
     discriminant: Option<DiscriminantTarget>,
     /// Marks a "catch-all" or "unknown" variant that needs to
     /// contain a single tuple field equal to the #[repr] of the enum
     ///
     /// Eg: for a `#[repr(u8)]`, this variant needs to contain a `u8` like so:
+    ///
     /// ```rust,ignore
     /// #[derive(TlsplSize, TlsplDeserialize, TlsplSerialize)]
     /// #[repr(u8)]
     /// enum Thing {
     ///     CaseA = 0,
     ///     CaseB = 1,
-    ///     #[tlspl(catchall)]
+    ///     #[tlspl(other)]
     ///     Unknown(u8)
     /// }
     /// ```
-    #[allow(dead_code)]
-    catchall: Flag,
+    other: Flag,
 }
 
 fn discr_const_ident(variant_ident: &Ident) -> Ident {
-    Ident::new(&format!("__THALASSA_{variant_ident}"), Span::call_site())
+    quote::format_ident!("__THALASSA_{}", variant_ident)
 }
 
 #[derive(Debug, darling::FromField)]
@@ -207,7 +257,7 @@ struct VariantUnit {
     ident: Ident,
     discriminant: Option<Expr>,
     #[darling(flatten)]
-    attr: TlsplVariantAttrs,
+    attr: TlsplEnumVariantAttrs,
 }
 
 impl VariantUnit {
@@ -250,7 +300,7 @@ struct VariantTuple {
     discriminant: Option<Expr>,
     fields: Fields<SpannedValue<FieldTuple>>,
     #[darling(flatten)]
-    attr: TlsplVariantAttrs,
+    attr: TlsplEnumVariantAttrs,
 }
 
 impl VariantTuple {
@@ -293,7 +343,7 @@ struct VariantNamed {
     discriminant: Option<Expr>,
     fields: Fields<SpannedValue<FieldNamed>>,
     #[darling(flatten)]
-    attr: TlsplVariantAttrs,
+    attr: TlsplEnumVariantAttrs,
 }
 
 impl VariantNamed {
@@ -330,19 +380,18 @@ impl VariantNamed {
 }
 
 #[derive(Debug)]
+struct MemberWithAttrs {
+    span: Span,
+    ident: Ident,
+    ty: Type,
+    attrs: TlsplFieldAttrs,
+}
+
+#[derive(Debug)]
 enum Variant {
     Unit(SpannedValue<VariantUnit>),
     Named(SpannedValue<VariantNamed>),
     Tuple(SpannedValue<VariantTuple>),
-}
-
-#[derive(Debug)]
-struct MemberWithAttrs<'a> {
-    span: Span,
-    ident: Ident,
-    ty: Type,
-    attr_with: Option<&'a ExprPath>,
-    attr_skip: bool,
 }
 
 impl Variant {
@@ -370,7 +419,7 @@ impl Variant {
         }
     }
 
-    fn attrs(&self) -> &TlsplVariantAttrs {
+    fn attrs(&self) -> &TlsplEnumVariantAttrs {
         match self {
             Variant::Unit(variant_unit) => &variant_unit.attr,
             Variant::Named(variant_named) => &variant_named.attr,
@@ -378,7 +427,7 @@ impl Variant {
         }
     }
 
-    fn members_with_exprs(&self) -> Box<dyn Iterator<Item = MemberWithAttrs<'_>> + '_> {
+    fn members_with_exprs(&self) -> Box<dyn Iterator<Item = MemberWithAttrs> + '_> {
         match self {
             Variant::Unit(_) => Box::new(std::iter::empty()),
             Variant::Named(variant_named) => {
@@ -386,22 +435,28 @@ impl Variant {
                     span: f.span(),
                     ident: f.ident.clone(),
                     ty: f.ty.clone(),
-                    attr_with: f.attr.with.as_ref(),
-                    attr_skip: f.attr.skip.is_present(),
+                    attrs: f.attr.clone(),
                 }))
             }
             Variant::Tuple(variant_tuple) => {
                 Box::new(variant_tuple.fields.iter().enumerate().map(|(idx, f)| {
                     let span = f.span();
                     MemberWithAttrs {
-                        ident: Ident::new(&format!("tuple{idx}"), f.span()),
+                        ident: format_ident!("tuple{}", idx, span = f.span()),
                         span,
                         ty: f.ty.clone(),
-                        attr_with: f.attr.with.as_ref(),
-                        attr_skip: f.attr.skip.is_present(),
+                        attrs: f.attr.clone(),
                     }
                 }))
             }
+        }
+    }
+
+    fn field_count(&self) -> usize {
+        match self {
+            Variant::Unit(_) => 0,
+            Variant::Named(variant_named) => variant_named.fields.len(),
+            Variant::Tuple(variant_tuple) => variant_tuple.fields.len(),
         }
     }
 }
@@ -467,6 +522,11 @@ enum MyEnum {
 
             let mut spans = Vec::with_capacity(self.variants.len());
             for variant in &self.variants {
+                // The `other` case doesn't need a discriminant const, as it's a fallback
+                if variant.attrs().other.is_present() {
+                    continue;
+                }
+
                 let variant_ident = variant.ident();
                 let const_id = discr_const_ident(variant_ident);
                 let span = variant.span();
@@ -568,22 +628,19 @@ impl TryFrom<&syn::Data> for EnumVariants {
             .iter()
             .filter_map(|field| errors.handle(Variant::try_from(field)))
             .collect();
+
         errors.finish_with(Self { variants: fields })
     }
 }
 
 #[derive(Debug, darling::FromDeriveInput)]
 struct StructUnitTarget {
-    #[darling(default = Span::call_site)]
-    span: Span,
     ident: Ident,
     generics: Generics,
 }
 
 #[derive(Debug, darling::FromDeriveInput)]
 struct StructNamedTarget {
-    #[darling(default = Span::call_site)]
-    span: Span,
     ident: Ident,
     generics: Generics,
     #[darling(with = TryFrom::try_from)]
@@ -592,8 +649,6 @@ struct StructNamedTarget {
 
 #[derive(Debug, darling::FromDeriveInput)]
 struct StructTupleTarget {
-    #[darling(default = Span::call_site)]
-    span: Span,
     ident: Ident,
     generics: Generics,
     #[darling(with = TryFrom::try_from)]
@@ -621,33 +676,33 @@ fn extract_repr_from_attrs(attrs: &[Attribute]) -> darling::Result<Ident> {
 }
 
 #[derive(Debug, darling::FromDeriveInput)]
-#[darling(forward_attrs(repr))]
+#[darling(attributes(tlspl), forward_attrs(repr))]
 struct EnumTarget {
-    #[darling(default = Span::call_site)]
-    span: Span,
     ident: Ident,
     generics: Generics,
     attrs: Vec<Attribute>,
     #[darling(with = TryFrom::try_from)]
     data: EnumVariants,
+    #[darling(flatten)]
+    attr: TlsplEnumContainerAttrs,
 }
 
 #[derive(Debug)]
 enum TlsplDeriveTarget {
-    StructUnit(StructUnitTarget),
-    StructNamed(StructNamedTarget),
-    StructTuple(StructTupleTarget),
-    Enum(EnumTarget),
+    StructUnit(SpannedValue<StructUnitTarget>),
+    StructNamed(SpannedValue<StructNamedTarget>),
+    StructTuple(SpannedValue<StructTupleTarget>),
+    Enum(SpannedValue<EnumTarget>),
 }
 
 impl TlsplDeriveTarget {
     #[allow(dead_code)]
     fn span(&self) -> Span {
         match self {
-            TlsplDeriveTarget::StructUnit(struct_unit_target) => struct_unit_target.span,
-            TlsplDeriveTarget::StructNamed(struct_named_target) => struct_named_target.span,
-            TlsplDeriveTarget::StructTuple(struct_tuple_target) => struct_tuple_target.span,
-            TlsplDeriveTarget::Enum(enum_target) => enum_target.span,
+            TlsplDeriveTarget::StructUnit(struct_unit_target) => struct_unit_target.span(),
+            TlsplDeriveTarget::StructNamed(struct_named_target) => struct_named_target.span(),
+            TlsplDeriveTarget::StructTuple(struct_tuple_target) => struct_tuple_target.span(),
+            TlsplDeriveTarget::Enum(enum_target) => enum_target.span(),
         }
     }
 }
@@ -718,36 +773,129 @@ fn augment_generics_with_lt(generics: &Generics) -> Generics {
 
 impl darling::FromDeriveInput for TlsplDeriveTarget {
     fn from_derive_input(input: &DeriveInput) -> darling::Result<Self> {
-        match &input.data {
+        let span = input.span();
+        Ok(match &input.data {
             syn::Data::Struct(syn::DataStruct {
                 fields: syn::Fields::Named(_),
                 ..
-            }) => StructNamedTarget::from_derive_input(input).map(Self::StructNamed),
+            }) => Self::StructNamed(SpannedValue::new(
+                StructNamedTarget::from_derive_input(input)?,
+                span,
+            )),
             syn::Data::Struct(syn::DataStruct {
                 fields: syn::Fields::Unnamed(_),
                 ..
-            }) => StructTupleTarget::from_derive_input(input).map(Self::StructTuple),
+            }) => Self::StructTuple(SpannedValue::new(
+                StructTupleTarget::from_derive_input(input)?,
+                span,
+            )),
             syn::Data::Struct(syn::DataStruct {
                 fields: syn::Fields::Unit,
                 ..
-            }) => StructUnitTarget::from_derive_input(input).map(Self::StructUnit),
-            syn::Data::Enum(_) => EnumTarget::from_derive_input(input).map(Self::Enum),
-            syn::Data::Union(_) => Err(darling::Error::custom(
-                "Unions are not supported in the TLSPL data scheme",
+            }) => Self::StructUnit(SpannedValue::new(
+                StructUnitTarget::from_derive_input(input)?,
+                span,
             )),
-        }
+            syn::Data::Enum(_) => {
+                let enum_def = EnumTarget::from_derive_input(input)?;
+                let enum_is_nakd = enum_def
+                    .data
+                    .variants
+                    .iter()
+                    // Skip over variants that are marked #[tlspl(other)] to get an accurate count
+                    .filter(|v| !v.attrs().other.is_present())
+                    .all(|v| v.field_count() == 0);
+                let enum_has_catchall = enum_def
+                    .data
+                    .variants
+                    .iter()
+                    .find(|v| v.attrs().other.is_present());
+
+                if enum_def.attr.untagged.is_present() {
+                    let all_variants_have_discriminants =
+                        enum_def.data.variants.iter().all(|variant| {
+                            matches!(
+                                variant.attrs().discriminant,
+                                Some(DiscriminantTarget::Path(_))
+                            )
+                        });
+
+                    if !all_variants_have_discriminants {
+                        return Err(darling::Error::custom(
+                            "Untagged enums REQUIRE to have all of their custom discriminants pointing to paths (eg: `#[tlspl(discriminant = \"OtherEnum::Variant\")]`",
+                        ));
+                    }
+                }
+
+                if let Some(catchall_variant) = enum_has_catchall {
+                    if !enum_is_nakd && !enum_def.attr.extensible.is_present() {
+                        return Err(darling::Error::custom(
+                            "`#[tlspl(other)]` is only useable on enums that are either naked enums (with no fields in variants) or enums that are marked `extensible`",
+                        ));
+                    }
+
+                    let enum_repr = extract_repr_from_attrs(&enum_def.attrs)?;
+                    let field_n = catchall_variant.field_count();
+
+                    let first_ty_matches_repr = || {
+                        if let Some(Type::Path(tp)) =
+                            catchall_variant.members_with_exprs().next().map(|m| m.ty)
+                        {
+                            tp.path.get_ident().unwrap() == &enum_repr
+                        } else {
+                            false
+                        }
+                    };
+
+                    let second_ty_is_bytes = || {
+                        if let Some(Type::Path(tp)) =
+                            &catchall_variant.members_with_exprs().nth(1).map(|m| m.ty)
+                        {
+                            tp.path.segments.last().unwrap().ident == "Cow"
+                        } else {
+                            false
+                        }
+                    };
+
+                    if enum_is_nakd {
+                        if field_n != 1 || !first_ty_matches_repr() {
+                            return Err(darling::Error::custom(
+                                "Catch-all variants marked with `#[tlspl(other)]` on naked enums need to have exactly *one* tuple field equal to the `#[repr]` of the enum",
+                            ));
+                        }
+                    } else {
+                        if field_n != 2 || !first_ty_matches_repr() || !second_ty_is_bytes() {
+                            return Err(darling::Error::custom(
+                                "Catch-all variants marked with `#[tlspl(other)]` on naked enums need to have exactly *two* tuple field equal to the `#[repr]` of the enum and a Cow<[u8]> container afterwards (like so: `Other(u8, Cow<'a, [u8]>)`",
+                            ));
+                        }
+                    }
+                }
+                Self::Enum(SpannedValue::new(enum_def, span))
+            }
+            syn::Data::Union(_) => {
+                return Err(darling::Error::custom(
+                    "Unions are not supported in the TLSPL data scheme",
+                ));
+            }
+        })
     }
+}
+
+fn discr_fence_name(enum_ident: &Ident) -> Ident {
+    format_ident!("__THALASSA_DISCR_FENCE_{}", enum_ident)
 }
 
 impl TlsplDeriveTarget {
     fn impl_size(&self) -> darling::Result<TokenStream2> {
         Ok(match self {
-            TlsplDeriveTarget::StructNamed(StructNamedTarget {
-                span,
-                ident,
-                generics,
-                data,
-            }) => {
+            TlsplDeriveTarget::StructNamed(sv) => {
+                let span = sv.span();
+                let StructNamedTarget {
+                    ident,
+                    generics,
+                    data,
+                } = sv.as_ref();
                 let generics = augment_generics_ty(generics, ImplTargets::SIZE);
                 let (impl_generics, ty_generics, where_c) = generics.split_for_impl();
 
@@ -756,7 +904,7 @@ impl TlsplDeriveTarget {
                         return None;
                     }
 
-                    let ident = f.ident.clone();
+                    let ident = syn::Member::Named(f.ident.clone());
                     Some(if let Some(module_with) = &f.attr.with {
                         quote_spanned! {f.span()=> #module_with::tlspl_serialized_len(&self.#ident) }
                     } else if f.ty == parse_quote!(u8) {
@@ -766,7 +914,7 @@ impl TlsplDeriveTarget {
                     })
                 });
 
-                quote_spanned! { *span=>
+                quote_spanned! { span=>
                     #[automatically_derived]
                     impl #impl_generics thalassa::TlsplSize for #ident #ty_generics #where_c {
                         #[inline]
@@ -776,12 +924,13 @@ impl TlsplDeriveTarget {
                     }
                 }
             }
-            TlsplDeriveTarget::StructTuple(StructTupleTarget {
-                span,
-                ident,
-                generics,
-                data,
-            }) => {
+            TlsplDeriveTarget::StructTuple(sv) => {
+                let span = sv.span();
+                let StructTupleTarget {
+                    ident,
+                    generics,
+                    data,
+                } = sv.as_ref();
                 let generics = augment_generics_ty(generics, ImplTargets::SIZE);
                 let (impl_generics, ty_generics, where_c) = generics.split_for_impl();
 
@@ -800,7 +949,7 @@ impl TlsplDeriveTarget {
                     })
                 });
 
-                quote_spanned! { *span=>
+                quote_spanned! { span=>
                     #[automatically_derived]
                     impl #impl_generics thalassa::TlsplSize for #ident #ty_generics #where_c {
                         #[inline]
@@ -810,15 +959,13 @@ impl TlsplDeriveTarget {
                     }
                 }
             }
-            TlsplDeriveTarget::StructUnit(StructUnitTarget {
-                span,
-                ident,
-                generics,
-            }) => {
+            TlsplDeriveTarget::StructUnit(sv) => {
+                let span = sv.span();
+                let StructUnitTarget { ident, generics } = sv.as_ref();
                 let generics = augment_generics_ty(generics, ImplTargets::SIZE);
                 let (impl_generics, ty_generics, where_c) = generics.split_for_impl();
 
-                quote_spanned! { *span=>
+                quote_spanned! { span=>
                     #[automatically_derived]
                     impl #impl_generics thalassa::TlsplSize for #ident #ty_generics #where_c {
                         #[inline]
@@ -826,31 +973,31 @@ impl TlsplDeriveTarget {
                     }
                 }
             }
-            Self::Enum(EnumTarget {
-                span,
-                ident,
-                generics,
-                attrs,
-                data,
-            }) => {
+            Self::Enum(sv) => {
+                let span = sv.span();
+                let EnumTarget {
+                    ident,
+                    generics,
+                    attrs,
+                    data,
+                    attr,
+                } = sv.as_ref();
                 let repr = extract_repr_from_attrs(attrs)?;
                 let generics = augment_generics_ty(generics, ImplTargets::SIZE);
                 let (impl_generics, ty_generics, where_c) = generics.split_for_impl();
-                // let (_, ty_generics, where_c) = generics.split_for_impl();
-                // let (impl_generics, ty_generics, where_c) = generics.split_for_impl();
-                //
-                let field_arms = data.variants.iter().map(|variant| {
+
+                let variant_arms = data.variants.iter().map(|variant| {
                     let span = variant.span();
                     let variant_ident = variant.ident();
                     let variant_is_tuple = matches!(variant, Variant::Tuple(_));
 
                     let (field_mappings, field_mapping_calls): (Vec<_>, Vec<_>) = variant.members_with_exprs().filter_map(|member| {
-                        if member.attr_skip {
+                        if member.attrs.skip.is_present() {
                             return None;
                         }
 
                         let ident = member.ident;
-                        let method_mapping = if let Some(with) = member.attr_with {
+                        let method_mapping = if let Some(with) = member.attrs.with {
                             quote_spanned! { member.span=> #with::tlspl_serialized_len(&#ident) }
                         } else if member.ty == parse_quote!(u8) {
                             quote_spanned! { member.span=> 1 }
@@ -860,6 +1007,12 @@ impl TlsplDeriveTarget {
 
                         Some((ident, method_mapping))
                     }).unzip();
+
+                    if variant.attrs().other.is_present() {
+                        return quote_spanned! { span=>
+                            #ident::#variant_ident(#(#field_mappings,)* ..) => { return 0 #(+ #field_mapping_calls)*; },
+                        };
+                    }
 
                     if variant_is_tuple {
                         quote_spanned! { span=>
@@ -872,17 +1025,53 @@ impl TlsplDeriveTarget {
                     }
                 });
 
-                quote_spanned! { *span=>
+                let (discr_block, untagged_trait_impl, untagged_discr_fence) = if attr
+                    .untagged
+                    .is_present()
+                {
+                    let discr_fence_name = discr_fence_name(ident);
+                    (
+                        quote!(0),
+                        quote! {
+
+                            #[automatically_derived]
+                            unsafe impl #impl_generics thalassa::util::TlsplUntaggedEnum for #ident #ty_generics #where_c {}
+                        },
+                        quote! {
+
+                            std::thread_local! {
+                                #[allow(non_upper_case_globals)]
+                                pub(crate) static #discr_fence_name: std::cell::Cell<Option<#repr>> = const { std::cell::Cell::new(None) };
+                            }
+                        },
+                    )
+                } else {
+                    (quote!(core::mem::size_of::<#repr>()), quote!(), quote!())
+                };
+
+                let maybe_extensible = if attr.extensible.is_present() {
+                    quote!(thalassa::types::content_len_as_vlbytes_overhead(
+                        content_len
+                    ))
+                } else {
+                    quote!(0)
+                };
+
+                quote_spanned! { span=>
                     #[automatically_derived]
                     impl #impl_generics thalassa::TlsplSize for #ident #ty_generics #where_c {
                         #[inline]
                         #[allow(clippy::identity_op)]
                         fn tlspl_serialized_len(&self) -> usize {
-                            core::mem::size_of::<#repr>() + match self {
-                                #(#field_arms)*
-                            }
+                            let content_len = match self {
+                                #(#variant_arms)*
+                            };
+
+                            #discr_block + #maybe_extensible + content_len
                         }
                     }
+                    #untagged_trait_impl
+                    #untagged_discr_fence
                 }
             }
         })
@@ -890,12 +1079,13 @@ impl TlsplDeriveTarget {
 
     fn impl_serialize(&self) -> darling::Result<TokenStream2> {
         Ok(match self {
-            TlsplDeriveTarget::StructNamed(StructNamedTarget {
-                span,
-                ident,
-                generics,
-                data,
-            }) => {
+            TlsplDeriveTarget::StructNamed(sv) => {
+                let span = sv.span();
+                let StructNamedTarget {
+                    ident,
+                    generics,
+                    data,
+                } = sv.as_ref();
                 let generics = augment_generics_ty(generics, ImplTargets::SERIALIZE);
                 let (impl_generics, ty_generics, where_c) = generics.split_for_impl();
 
@@ -904,7 +1094,7 @@ impl TlsplDeriveTarget {
                         return None;
                     }
 
-                    let ident = f.ident.clone();
+                    let ident = syn::Member::Named(f.ident.clone());
                     Some(if let Some(module_with) = &f.attr.with {
                         quote_spanned! {f.span()=> #module_with::tlspl_serialize_to(&self.#ident, writer)? }
                     } else if f.ty == parse_quote!(u8) {
@@ -914,7 +1104,7 @@ impl TlsplDeriveTarget {
                     })
                 });
 
-                quote_spanned! { *span=>
+                quote_spanned! { span=>
                     #[automatically_derived]
                     impl #impl_generics thalassa::TlsplSerialize for #ident #ty_generics #where_c {
                         #[inline]
@@ -926,12 +1116,13 @@ impl TlsplDeriveTarget {
                     }
                 }
             }
-            TlsplDeriveTarget::StructTuple(StructTupleTarget {
-                span,
-                ident,
-                generics,
-                data,
-            }) => {
+            TlsplDeriveTarget::StructTuple(sv) => {
+                let span = sv.span();
+                let StructTupleTarget {
+                    ident,
+                    generics,
+                    data,
+                } = sv.as_ref();
                 let generics = augment_generics_ty(generics, ImplTargets::SERIALIZE);
                 let (impl_generics, ty_generics, where_c) = generics.split_for_impl();
 
@@ -950,7 +1141,7 @@ impl TlsplDeriveTarget {
                     })
                 });
 
-                quote_spanned! { *span=>
+                quote_spanned! { span=>
                     #[automatically_derived]
                     impl #impl_generics thalassa::TlsplSerialize for #ident #ty_generics #where_c {
                         #[inline]
@@ -962,15 +1153,13 @@ impl TlsplDeriveTarget {
                     }
                 }
             }
-            TlsplDeriveTarget::StructUnit(StructUnitTarget {
-                span,
-                ident,
-                generics,
-            }) => {
+            TlsplDeriveTarget::StructUnit(sv) => {
+                let span = sv.span();
+                let StructUnitTarget { ident, generics } = sv.as_ref();
                 let generics = augment_generics_ty(generics, ImplTargets::SERIALIZE);
                 let (impl_generics, ty_generics, where_c) = generics.split_for_impl();
 
-                quote_spanned! { *span=>
+                quote_spanned! { span=>
                     #[automatically_derived]
                     impl #impl_generics thalassa::TlsplSerialize for #ident #ty_generics #where_c {
                         #[inline]
@@ -980,72 +1169,133 @@ impl TlsplDeriveTarget {
                     }
                 }
             }
-            TlsplDeriveTarget::Enum(target) => {
-                let discriminants_ts = target.data.discriminant_consts(target)?;
+            TlsplDeriveTarget::Enum(sv) => {
+                let span = sv.span();
+                let discriminants_ts = sv.data.discriminant_consts(sv.as_ref())?;
                 let EnumTarget {
-                    span,
                     ident,
                     generics,
                     data,
-                    ..
-                } = target;
+                    attr,
+                    attrs,
+                } = sv.as_ref();
+
                 let generics = augment_generics_ty(generics, ImplTargets::SERIALIZE);
                 let (impl_generics, ty_generics, where_c) = generics.split_for_impl();
+                let repr = extract_repr_from_attrs(attrs)?;
 
-                let field_arms = data.variants.iter().map(|variant| {
+                let is_extensible = attr.extensible.is_present();
+
+                let (extensible_bootstrap, write_target, extensible_finalize) = if is_extensible {
+                    (
+                        quote! {
+                            let mut buffer = Vec::<u8>::with_capacity(self.tlspl_serialized_len() - core::mem::size_of::<#repr>() - 1);
+                        },
+                        quote!(&mut buffer),
+                        quote! {{
+                            debug_assert_eq!(field_written, buffer.len(), "Write mismatch");
+                            buffer.tlspl_serialize_to(writer)?
+                        }},
+                    )
+                } else {
+                    (quote!(), quote!(writer), quote!(field_written))
+                };
+
+                let variant_arms = data.variants.iter().map(|variant| {
                     let span = variant.span();
                     let variant_is_tuple = matches!(variant, Variant::Tuple(_));
                     let variant_ident = variant.ident();
                     let discriminant = discr_const_ident(variant_ident);
+                    let variant_is_catchall = variant.attrs().other.is_present();
+
+                    let actual_write_target = if variant_is_catchall {
+                        quote!(writer)
+                    } else {
+                        quote!(#write_target)
+                    };
+
                     let (field_mappings, field_mapping_calls): (Vec<_>, Vec<_>) = variant
                         .members_with_exprs()
                         .filter_map(|member| {
-                            if member.attr_skip {
+                            if member.attrs.skip.is_present() {
                                 return None;
                             }
 
                             let ident = member.ident;
-                            let method_mapping = if let Some(with) = member.attr_with {
-                                quote_spanned! { member.span=> #with::tlspl_serialize_to(&#ident, writer)? }
+                            let method_mapping = if let Some(with) = member.attrs.with {
+                                quote_spanned! { member.span=> #with::tlspl_serialize_to(&#ident, #actual_write_target)? }
                             } else if member.ty == parse_quote!(u8) {
-                                quote_spanned! { member.span=> writer.write(&[#ident])? }
+                                quote_spanned! { member.span=> #actual_write_target.write(&[*#ident])? }
                             } else {
-                                quote_spanned! { member.span=> #ident.tlspl_serialize_to(writer)? }
+                                quote_spanned! { member.span=> #ident.tlspl_serialize_to(#actual_write_target)? }
                             };
 
                             Some((ident, method_mapping))
                         })
                         .unzip();
 
-                    if variant_is_tuple {
-                        quote_spanned! { span=>
-                            #ident::#variant_ident(#(#field_mappings,)* ..) => {
-                                writer.write(&#discriminant.to_be_bytes())?
-                                #(+ #field_mapping_calls)*
-                            },
-                        }
-                    } else {
-                        quote_spanned! { span=>
-                            #ident::#variant_ident { #(#field_mappings,)* .. } => {
-                                writer.write(&#discriminant.to_be_bytes())?
-                                #(+ #field_mapping_calls)*
-                            },
-                        }
-                    }
-                });
 
-                quote_spanned! { *span=>
+                    let variant_match = if variant_is_tuple {
+                        quote!(#ident::#variant_ident(#(#field_mappings,)* ..))
+                    } else {
+                        quote!(#ident::#variant_ident { #(#field_mappings,)* .. })
+                    };
+
+                    if variant_is_catchall {
+                        if !variant_is_tuple || field_mappings.is_empty() || field_mappings.len() > 2 {
+                            return Err(darling::Error::custom("The `other` Variant is malformed, it is expected to be a tuple comprised of 1 or 2 fields: (repr) or (repr, Cow<[u8]>)"));
+                        }
+
+                        return Ok(quote_spanned! { span=>
+                            #variant_match => {
+                                return Ok(0 #(+ #field_mapping_calls)*);
+                            },
+                        });
+                    }
+
+                    let discr_block = if attr.untagged.is_present() {
+                        quote!(0)
+                    } else {
+                        quote!(writer.write(&#discriminant.to_be_bytes())?)
+                    };
+
+                    Ok(quote_spanned! { span=>
+                        #variant_match => {
+                            #extensible_bootstrap
+                            written += #discr_block;
+                            field_written += 0 #(+ #field_mapping_calls)*;
+                            written += #extensible_finalize;
+                        },
+                    })
+                }).collect::<darling::Result<Vec<_>>>()?;
+
+                let untagged_assert = if attr.untagged.is_present() {
+                    quote!(thalassa::assert_untagged!(#ident);)
+                } else {
+                    quote!()
+                };
+
+                quote_spanned! { span=>
                     #[automatically_derived]
                     impl #impl_generics thalassa::TlsplSerialize for #ident #ty_generics #where_c {
                         #[inline]
-                        #[allow(clippy::identity_op)]
+                        #[allow(clippy::identity_op, non_upper_case_globals)]
                         fn tlspl_serialize_to<W: thalassa::io::Write>(&self, writer: &mut W) -> thalassa::error::TlsplWriteResult<usize> {
                             #discriminants_ts
-                            Ok(match self {
-                                #(#field_arms)*
-                            })
+
+                            #[allow(unused_imports)]
+                            use thalassa::TlsplSize as _;
+
+                            let mut written = 0usize;
+                            let mut field_written = 0usize;
+                            match self {
+                                #(#variant_arms)*
+                            }
+
+                            Ok(written)
                         }
                     }
+                    #untagged_assert
                 }
             }
         })
@@ -1053,48 +1303,86 @@ impl TlsplDeriveTarget {
 
     fn impl_deserialize(&self) -> darling::Result<TokenStream2> {
         Ok(match self {
-            TlsplDeriveTarget::StructNamed(StructNamedTarget {
-                span,
-                ident,
-                generics,
-                data,
-            }) => {
+            TlsplDeriveTarget::StructNamed(sv) => {
+                let span = sv.span();
+                let StructNamedTarget {
+                    ident,
+                    generics,
+                    data,
+                } = sv.as_ref();
+
                 let ty_generics_def = augment_generics_ty(generics, ImplTargets::DESERIALIZE);
                 let impl_generics_def = augment_generics_with_lt(&ty_generics_def);
                 let (impl_generics, _, _) = impl_generics_def.split_for_impl();
                 let (_, ty_generics, where_c) = generics.split_for_impl();
 
-                let member_calls = data.fields.iter().map(|f| {
-                    let ident = f.ident.clone();
-                    if f.attr.skip.is_present() {
-                        quote_spanned! { f.span()=> #ident: Default::default() }
-                    } else if let Some(with) = &f.attr.with {
-                        quote_spanned! { f.span()=> #ident: #with::tlspl_deserialize_from(reader)? }
-                    } else if f.ty == parse_quote!(u8) {
-                        quote_spanned! {f.span()=> #ident: reader.read_byte()? }
-                    } else {
-                        quote_spanned! { f.span()=> #ident: <_>::tlspl_deserialize_from(reader)? }
-                    }
-                });
+                let (member_list, member_decls): (Vec<_>, Vec<_>) = data
+                    .fields
+                    .iter()
+                    .map(|f| {
+                        let ident = f.ident.clone();
+                        let ty = f.ty.clone();
+                        let get_value_tokens = if f.attr.skip.is_present() {
+                            quote_spanned! { f.span()=> Default::default() }
+                        } else if let Some(with) = &f.attr.with {
+                            quote_spanned! { f.span()=> #with::tlspl_deserialize_from(reader)? }
+                        } else if f.ty == parse_quote!(u8) {
+                            quote_spanned! {f.span()=> reader.read_byte()? }
+                        } else {
+                            quote_spanned! { f.span()=> <_>::tlspl_deserialize_from(reader)? }
+                        };
 
-                quote_spanned! { *span=>
+                        let select_fence_store = if let Some(select_target) = &f.attr.select {
+                            let syn::Type::Path(tp) = &f.ty else {
+                                panic!("Type is not an actual path");
+                            };
+                            let ty_ident = tp.path.segments.last().expect("Type cannot be found");
+                            let fence_ident = discr_fence_name(&ty_ident.ident);
+                            let mut fence_tp = tp.path.clone();
+                            let fence_tp_ty = fence_tp.segments.last_mut().unwrap();
+                            fence_tp_ty.arguments = Default::default();
+                            fence_tp_ty.ident = fence_ident;
+
+                            quote! {
+                                #fence_tp.replace(Some(#select_target as _));
+                            }
+                        } else {
+                            quote!()
+                        };
+
+                        (
+                            quote!(#ident),
+                            quote_spanned! { f.span()=>
+                                let #ident: #ty = {
+                                    #select_fence_store
+                                    #get_value_tokens
+                                };
+                            },
+                        )
+                    })
+                    .unzip();
+
+                quote_spanned! { span=>
                     #[automatically_derived]
                     impl #impl_generics thalassa::TlsplDeserialize<'tlspl> for #ident #ty_generics #where_c {
                         #[inline]
                         fn tlspl_deserialize_from<R: thalassa::io::Read<'tlspl>>(reader: &mut R) -> thalassa::error::TlsplReadResult<Self> {
+                            #(#member_decls)*
                             Ok(Self {
-                                #(#member_calls,)*
+                                #(#member_list,)*
                             })
                         }
                     }
                 }
             }
-            TlsplDeriveTarget::StructTuple(StructTupleTarget {
-                span,
-                ident,
-                generics,
-                data,
-            }) => {
+            TlsplDeriveTarget::StructTuple(sv) => {
+                let span = sv.span();
+                let StructTupleTarget {
+                    ident,
+                    generics,
+                    data,
+                } = sv.as_ref();
+
                 let ty_generics_def = augment_generics_ty(generics, ImplTargets::DESERIALIZE);
                 let impl_generics_def = augment_generics_with_lt(&ty_generics_def);
                 let (impl_generics, _, _) = impl_generics_def.split_for_impl();
@@ -1112,7 +1400,7 @@ impl TlsplDeriveTarget {
                     }
                 });
 
-                quote_spanned! { *span=>
+                quote_spanned! { span=>
                     #[automatically_derived]
                     impl #impl_generics thalassa::TlsplDeserialize<'tlspl> for #ident #ty_generics #where_c {
                         #[inline]
@@ -1122,17 +1410,15 @@ impl TlsplDeriveTarget {
                     }
                 }
             }
-            TlsplDeriveTarget::StructUnit(StructUnitTarget {
-                span,
-                ident,
-                generics,
-            }) => {
+            TlsplDeriveTarget::StructUnit(sv) => {
+                let span = sv.span();
+                let StructUnitTarget { ident, generics } = sv.as_ref();
                 let ty_generics_def = augment_generics_ty(generics, ImplTargets::DESERIALIZE);
                 let impl_generics_def = augment_generics_with_lt(&ty_generics_def);
                 let (impl_generics, _, _) = impl_generics_def.split_for_impl();
                 let (_, ty_generics, where_c) = generics.split_for_impl();
 
-                quote_spanned! { *span=>
+                quote_spanned! { span=>
                     #[automatically_derived]
                     impl #impl_generics thalassa::TlsplDeserialize<'tlspl> for #ident #ty_generics #where_c {
                         #[inline]
@@ -1142,69 +1428,117 @@ impl TlsplDeriveTarget {
                     }
                 }
             }
-            TlsplDeriveTarget::Enum(target) => {
-                let discriminants_ts = target.data.discriminant_consts(target)?;
+            TlsplDeriveTarget::Enum(sv) => {
+                let span = sv.span();
+                let discriminants_ts = sv.data.discriminant_consts(sv.as_ref())?;
                 let EnumTarget {
-                    span,
                     ident,
                     generics,
                     data,
                     attrs,
-                } = target;
+                    attr,
+                } = sv.as_ref();
+
                 let repr = extract_repr_from_attrs(attrs)?;
                 let ty_generics_def = augment_generics_ty(generics, ImplTargets::DESERIALIZE);
                 let impl_generics_def = augment_generics_with_lt(&ty_generics_def);
                 let (impl_generics, _, _) = impl_generics_def.split_for_impl();
                 let (_, ty_generics, where_c) = generics.split_for_impl();
 
-                let variant_arms = data.variants.iter().map(|variant| {
+                let mut catchall_ident = None;
+
+                let extensible_bootstrap = if attr.extensible.is_present() {
+                    quote! {
+                        let mut buffer = std::borrow::Cow::<[u8]>::tlspl_deserialize_from(reader)?;
+                    }
+                } else {
+                    quote!()
+                };
+
+                let variant_arms = data.variants.iter().filter_map(|variant| {
+                    if variant.attrs().other.is_present() {
+                        catchall_ident.replace(variant.ident().clone());
+                        return None;
+                    }
+
                     let span = variant.span();
                     let variant_ident = variant.ident();
                     let variant_is_tuple = matches!(variant, Variant::Tuple(_));
                     let discriminant = discr_const_ident(variant_ident);
+
+                    let read_target = if attr.extensible.is_present() {
+                        quote!(&mut buffer)
+                    } else {
+                        quote!(reader)
+                    };
+
                     let (field_mappings, field_mapping_calls): (Vec<_>, Vec<_>) = variant
                         .members_with_exprs()
                         .map(|member| {
-                            let method_mapping = if member.attr_skip {
+                            let method_mapping = if member.attrs.skip.is_present() {
                                 quote_spanned! { member.span=> Default::default() }
-                            } else if let Some(with) = member.attr_with {
-                                quote_spanned! { member.span=> #with::tlspl_deserialize_from(reader)? }
+                            } else if let Some(with) = member.attrs.with {
+                                quote_spanned! { member.span=> #with::tlspl_deserialize_from(#read_target)? }
                             }  else if member.ty == parse_quote!(u8) {
-                                quote_spanned! { member.span=> reader.read_byte()? }
+                                quote_spanned! { member.span=> #read_target.read_byte()? }
                             } else {
-                                quote_spanned! { member.span=> <_>::tlspl_deserialize_from(reader)? }
+                                quote_spanned! { member.span=> <_>::tlspl_deserialize_from(#read_target)? }
                             };
 
                             (member.ident, method_mapping)
                         })
                         .unzip();
-                    if variant_is_tuple {
-                        quote_spanned! { span=>
-                            #discriminant => Ok(#ident::#variant_ident(
+
+                    let variant_splat = if variant_is_tuple {
+                        quote! {
+                            #ident::#variant_ident(
                                 #(#field_mapping_calls,)*
-                            )),
+                            )
                         }
                     } else {
-                        quote_spanned! { span=>
-                            #discriminant => Ok(#ident::#variant_ident {
+                        quote! {
+                            #ident::#variant_ident {
                                 #(#field_mappings: #field_mapping_calls,)*
-                            }),
+                            }
                         }
-                    }
-                });
+                    };
 
-                quote_spanned! { *span=>
+                    Some(quote_spanned! { span=>
+                        #discriminant => #variant_splat,
+                    })
+                }).collect::<Vec<_>>();
+
+                let discr_fence_name = discr_fence_name(ident);
+
+                let discr_block = if attr.untagged.is_present() {
+                    quote! {
+                        let discriminant: #repr = #discr_fence_name.take().expect("There should be a value in the discriminant fence");
+                    }
+                } else {
+                    quote! {
+                        let discriminant = <#repr>::from_be_bytes(*reader.read_array()?);
+                    }
+                };
+
+                let catchall_block = if let Some(catchall_variant) = catchall_ident {
+                    quote!(discr => #ident::#catchall_variant(discr, buffer))
+                } else {
+                    quote!(_ => return Err(thalassa::error::TlsplReadError::UnknownEnumDiscriminant(discriminant.into())))
+                };
+
+                quote_spanned! { span=>
                     #[automatically_derived]
                     impl #impl_generics thalassa::TlsplDeserialize<'tlspl> for #ident #ty_generics #where_c {
                         #[inline]
-                        #[allow(clippy::identity_op)]
+                        #[allow(clippy::identity_op, non_upper_case_globals)]
                         fn tlspl_deserialize_from<R: thalassa::io::Read<'tlspl>>(reader: &mut R) -> thalassa::error::TlsplReadResult<Self> {
                             #discriminants_ts
-                            let discriminant = <#repr>::from_be_bytes(*reader.read_array()?);
-                            match discriminant {
+                            #discr_block
+                            #extensible_bootstrap
+                            Ok(match discriminant {
                                 #(#variant_arms)*
-                                _ => Err(thalassa::error::TlsplReadError::UnknownEnumDiscriminant(discriminant.into()))
-                            }
+                                #catchall_block
+                            })
                         }
                     }
                 }
