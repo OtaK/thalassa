@@ -34,6 +34,10 @@ pub enum TlsplReadError {
     VlBytesLengthOverflow,
     #[error("Could not deserialize enum with discriminant {0:X}")]
     UnknownEnumDiscriminant(u64),
+    #[error(
+        "Could not continue with set-like semantics: A duplicate entry has been detected, and deserializing such a value wowuld result in inconsistencies"
+    )]
+    DuplicateSetValue,
     #[error("crate({krate}) Error: {message}")]
     Custom {
         krate: &'static str,

@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use crate::{
     TlsplDeserialize, TlsplSerialize, TlsplSize,
-    error::{TlsplReadResult, TlsplWriteResult},
+    error::{TlsplReadError, TlsplReadResult, TlsplWriteResult},
     types::ContentLengthLength,
 };
 
@@ -102,6 +102,149 @@ impl<'a, T: TlsplDeserialize<'a> + 'a> TlsplDeserialize<'a> for Vec<T> {
         }
 
         Ok(values)
+    }
+}
+
+impl<V: TlsplSize> TlsplSize for std::collections::HashSet<V> {
+    fn tlspl_serialized_len(&self) -> usize {
+        let cl = self.iter().map(V::tlspl_serialized_len).sum();
+        ContentLengthLength::from_content_len(cl) as u8 as usize + cl
+    }
+}
+
+impl<V: TlsplSerialize> TlsplSerialize for std::collections::HashSet<V> {
+    fn tlspl_serialize_to<W: parsio::Write>(&self, writer: &mut W) -> TlsplWriteResult<usize> {
+        let cl = self.iter().map(V::tlspl_serialized_len).sum();
+        let cl_len = ContentLengthLength::from_content_len(cl);
+        let written = self
+            .iter()
+            .try_fold(cl_len.write_content_len(cl, writer)?, |acc, item| {
+                item.tlspl_serialize_to(writer).map(|il| acc + il)
+            })?;
+
+        debug_assert_eq!(written, self.tlspl_serialized_len(), "Write mismatch");
+
+        Ok(written)
+    }
+}
+
+impl<'tlspl, V: TlsplDeserialize<'tlspl> + std::hash::Hash + Eq + 'tlspl> TlsplDeserialize<'tlspl>
+    for std::collections::HashSet<V>
+{
+    fn tlspl_deserialize_from<R: parsio::Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self>
+    where
+        Self: Sized + 'tlspl,
+    {
+        let length = ContentLengthLength::read_content_len(reader)?;
+        let mut amt_read = 0usize;
+        let mut values = std::collections::HashSet::new();
+        while amt_read < length {
+            let item = V::tlspl_deserialize_from(reader)?;
+            amt_read += item.tlspl_serialized_len();
+            let is_new = values.insert(item);
+            if !is_new {
+                return Err(TlsplReadError::DuplicateSetValue);
+            }
+        }
+
+        Ok(values)
+    }
+}
+
+impl<V: TlsplSize> TlsplSize for std::collections::BTreeSet<V> {
+    fn tlspl_serialized_len(&self) -> usize {
+        let cl = self.iter().map(V::tlspl_serialized_len).sum();
+        ContentLengthLength::from_content_len(cl) as u8 as usize + cl
+    }
+}
+
+impl<V: TlsplSerialize> TlsplSerialize for std::collections::BTreeSet<V> {
+    fn tlspl_serialize_to<W: parsio::Write>(&self, writer: &mut W) -> TlsplWriteResult<usize> {
+        let cl = self.iter().map(V::tlspl_serialized_len).sum();
+        let cl_len = ContentLengthLength::from_content_len(cl);
+        let written = self
+            .iter()
+            .try_fold(cl_len.write_content_len(cl, writer)?, |acc, item| {
+                item.tlspl_serialize_to(writer).map(|il| acc + il)
+            })?;
+
+        debug_assert_eq!(written, self.tlspl_serialized_len(), "Write mismatch");
+
+        Ok(written)
+    }
+}
+
+impl<'tlspl, V: TlsplDeserialize<'tlspl> + Ord + 'tlspl> TlsplDeserialize<'tlspl>
+    for std::collections::BTreeSet<V>
+{
+    fn tlspl_deserialize_from<R: parsio::Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self>
+    where
+        Self: Sized + 'tlspl,
+    {
+        let length = ContentLengthLength::read_content_len(reader)?;
+        let mut amt_read = 0usize;
+        let mut values = std::collections::BTreeSet::new();
+        while amt_read < length {
+            let item = V::tlspl_deserialize_from(reader)?;
+            amt_read += item.tlspl_serialized_len();
+            let is_new = values.insert(item);
+            if !is_new {
+                return Err(TlsplReadError::DuplicateSetValue);
+            }
+        }
+
+        Ok(values)
+    }
+}
+
+impl<K: TlsplSize, V: TlsplSize> TlsplSize for std::collections::HashMap<K, V> {
+    fn tlspl_serialized_len(&self) -> usize {
+        let cl = self
+            .iter()
+            .map(|(k, v)| k.tlspl_serialized_len() + v.tlspl_serialized_len())
+            .sum();
+        let cll = ContentLengthLength::from_content_len(cl);
+        cll as u8 as usize + cl
+    }
+}
+
+impl<K: TlsplSerialize, V: TlsplSerialize> TlsplSerialize for std::collections::HashMap<K, V> {
+    fn tlspl_serialize_to<W: parsio::Write>(&self, writer: &mut W) -> TlsplWriteResult<usize> {
+        let cl = self
+            .iter()
+            .map(|(k, v)| k.tlspl_serialized_len() + v.tlspl_serialized_len())
+            .sum();
+        let cll = ContentLengthLength::from_content_len(cl);
+        let mut written = cll.write_content_len(cl, writer)?;
+        for pair in self.iter() {
+            written += pair.tlspl_serialize_to(writer)?
+        }
+
+        Ok(written)
+    }
+}
+
+impl<'a, K: TlsplDeserialize<'a> + 'a + std::hash::Hash + Eq, V: TlsplDeserialize<'a> + 'a>
+    TlsplDeserialize<'a> for std::collections::HashMap<K, V>
+{
+    #[inline]
+    fn tlspl_deserialize_from<R: crate::io::Read<'a>>(reader: &mut R) -> TlsplReadResult<Self>
+    where
+        Self: Sized + 'a,
+    {
+        let length = ContentLengthLength::read_content_len(reader)?;
+        let mut amt_read = 0usize;
+        let mut pairs = Self::default();
+        while amt_read < length {
+            let k = K::tlspl_deserialize_from(reader)?;
+            let v = V::tlspl_deserialize_from(reader)?;
+
+            amt_read += k.tlspl_serialized_len() + v.tlspl_serialized_len();
+
+            pairs.insert(k, v);
+        }
+
+        Ok(pairs)
     }
 }
 
