@@ -8,7 +8,7 @@
 Implementation of the TLS presentation language data format defined in RFC8446.
 Mostly cares about what MLS (RFC9420) cares about, eventually we'll cover the entirety of the spec to support other TLS-PL usecases (like, uh, TLS).
 
-The killer feature compared to other crates is zero-copy deserialization.
+The killer feature compared to other crates is zero-copy deserialization, making it seriously fast, like up to 5TB/s fast on 1MB payloads.
 
 This includes a derive proc macro heavily inspired by [tls_codec](https://crates.io/crates/tls_codec), with a feature focus on `discriminant` related attributes - which I contributed to.
 
@@ -20,13 +20,15 @@ Here: [https://docs.rs/thalassa](https://docs.rs/thalassa)
 
 ## Roadmap
 
-- [ ] Make E2E interop tests with `tls_codec` - **DO NOT USE this crate until this is done.**
-- [ ] Actually manage to benchmark the real performance? Despite my best efforts, I get numbers in the range of 500TB/s on deserialization, which absolutely doesn't sound right.
-- [ ] "Distant variant" feature on the derive
+- [x] Make E2E interop tests with `tls_codec`
+- [x] Actually manage to benchmark the real performance? Despite my best efforts, I get numbers in the range of 500TB/s on deserialization, which absolutely doesn't sound right.
+  - see [BENCHMARKS](benchmarks/BENCHMARKS.md)
+- [x] "Distant variant" feature on the derive
   - This basically allows to de/serialize Rust enums as TLSPL variants, but allowing to use a discriminant *not* immediately preceding the variant contents, which is currently a requirement (as with `tls_codec`). This is *extremely* common in protocols making use of TLSPL, such as MLS, MIMI or keytrans.
+  - Done! It's been named `#[tlspl(select)]` and will be available in 0.0.2
 - [ ] Billion Laughs protection (recursion depth tracking)
 - [ ] Serde compat
-- [ ] Facet compat (maybe?)
+- [x] Facet compat (maybe?) - NOPE. Not happening
 - [ ] Docs improvements, examples, etc
 
 ## AI Disclaimer
