@@ -1,6 +1,6 @@
 [package]
 name = "thalassa"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2024"
 rust-version = "1.85"
 include = ["src/**/*", "LICENSE-*", "README.md"]
@@ -39,7 +39,7 @@ thiserror = "2"
 simdutf8 = "0.1"
 static_assertions = "1"
 parsio = { version = "0.0.2", features = ["std"] }
-thalassa-derive = { path = "./thalassa-derive", version = "0.0.1", optional = true }
+thalassa-derive = { path = "./thalassa-derive", version = "0.0.2", optional = true }
 
 [profile.bench]
 opt-level = 3
