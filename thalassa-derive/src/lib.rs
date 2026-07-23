@@ -918,6 +918,7 @@ impl TlsplDeriveTarget {
                     #[automatically_derived]
                     impl #impl_generics thalassa::TlsplSize for #ident #ty_generics #where_c {
                         #[inline]
+                        #[allow(clippy::identity_op)]
                         fn tlspl_serialized_len(&self) -> usize {
                             0 #(+ #member_calls)*
                         }
@@ -953,6 +954,7 @@ impl TlsplDeriveTarget {
                     #[automatically_derived]
                     impl #impl_generics thalassa::TlsplSize for #ident #ty_generics #where_c {
                         #[inline]
+                        #[allow(clippy::identity_op)]
                         fn tlspl_serialized_len(&self) -> usize {
                             0 #(+ #member_calls)*
                         }
@@ -969,6 +971,7 @@ impl TlsplDeriveTarget {
                     #[automatically_derived]
                     impl #impl_generics thalassa::TlsplSize for #ident #ty_generics #where_c {
                         #[inline]
+                        #[allow(clippy::identity_op)]
                         fn tlspl_serialized_len(&self) -> usize { 0 }
                     }
                 }
@@ -1040,7 +1043,7 @@ impl TlsplDeriveTarget {
                         quote! {
 
                             std::thread_local! {
-                                #[allow(non_upper_case_globals)]
+                                #[allow(non_upper_case_globals, clippy::identity_op)]
                                 pub(crate) static #discr_fence_name: std::cell::Cell<Option<#repr>> = const { std::cell::Cell::new(None) };
                             }
                         },
