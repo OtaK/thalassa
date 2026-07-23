@@ -121,6 +121,22 @@ struct TlsplEnumVariantAttrs {
     ///     #[tlspl(other)]
     ///     Unknown(u8)
     /// }
+    ///
+    /// #[derive(TlsplSize, TlsplDeserialize, TlsplSerialize)]
+    /// #[tlspl(extensible)]
+    /// #[repr(u8)]
+    /// enum ThingWithData<'a> {
+    ///     #[tlspl(discriminant = "Thing::CaseA")]
+    ///     CaseA {
+    ///         name: std::borrow::Cow<'a, str>,
+    ///     },
+    ///     #[tlspl(discriminant = "Thing::CaseB")]
+    ///     CaseB {
+    ///         flag: bool
+    ///     },
+    ///     #[tlspl(other)]
+    ///     Unknown(u8, std::borrow::Cow<'a, [u8]>),
+    /// }
     /// ```
     other: Flag,
 }
@@ -563,12 +579,12 @@ It is a viral attribute, and if one variant uses a path discriminant, then ALL y
                                 quote_spanned! { span=>
                                     #[allow(clippy::unnecessary_cast, non_upper_case_globals)]
                                     const #const_id: #repr = {
-                                        let expr_us = #expr_path as usize;
+                                        let expr_us = unsafe { *(((&#expr_path) as *const _ as *const #repr).cast::<#repr>()) } as usize;
                                         if expr_us < #repr::MIN as usize || expr_us > #repr::MAX as usize {
                                             panic!("enum repr overflow");
                                         }
 
-                                        #expr_path as #repr
+                                        expr_us as #repr
                                     };
                                 }
                             }
@@ -1448,7 +1464,7 @@ impl TlsplDeriveTarget {
                 let (impl_generics, _, _) = impl_generics_def.split_for_impl();
                 let (_, ty_generics, where_c) = generics.split_for_impl();
 
-                let mut catchall_ident = None;
+                let mut catchall_def = None;
 
                 let extensible_bootstrap = if attr.extensible.is_present() {
                     quote! {
@@ -1460,7 +1476,7 @@ impl TlsplDeriveTarget {
 
                 let variant_arms = data.variants.iter().filter_map(|variant| {
                     if variant.attrs().other.is_present() {
-                        catchall_ident.replace(variant.ident().clone());
+                        catchall_def.replace((variant.ident().clone(), variant.field_count()));
                         return None;
                     }
 
@@ -1523,8 +1539,16 @@ impl TlsplDeriveTarget {
                     }
                 };
 
-                let catchall_block = if let Some(catchall_variant) = catchall_ident {
-                    quote!(discr => #ident::#catchall_variant(discr, buffer))
+                let catchall_block = if let Some((catchall_variant, field_count)) = catchall_def {
+                    match field_count {
+                        1 => quote!(discr => #ident::#catchall_variant(discr)),
+                        2 => quote!(discr => #ident::#catchall_variant(discr, buffer)),
+                        _ => {
+                            return Err(darling::Error::custom(
+                                "Unexpected field count in the catchall enum, need 1 (naked) or 2 (fielded) depending on the enum nature",
+                            ));
+                        }
+                    }
                 } else {
                     quote!(_ => return Err(thalassa::error::TlsplReadError::UnknownEnumDiscriminant(discriminant.into())))
                 };

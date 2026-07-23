@@ -31,6 +31,28 @@ enum NaiveEnum<'a> {
     },
     Variant6,
     Variant7(RandomStruct<'a>),
+}
+
+#[derive(Debug, TlsplDeserialize, TlsplSerialize, TlsplSize)]
+#[tlspl(extensible)]
+#[repr(u16)]
+enum NaiveEnumWithFallback<'a> {
+    Variant1 {
+        thing: bool,
+    },
+    Variant2 {
+        number: u64,
+    },
+    Variant3(Cow<'a, [u8]>),
+    Variant4 {
+        useless_field: (),
+    },
+    Variant5 {
+        #[tlspl(skip)]
+        potato: [u8; 16],
+    },
+    Variant6,
+    Variant7(RandomStruct<'a>),
     #[tlspl(other)]
     Fallback(u16, Cow<'a, [u8]>),
 }
