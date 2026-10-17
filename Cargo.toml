@@ -2,7 +2,7 @@
 name = "thalassa"
 version = "0.0.4"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.95"
 include = ["src/**/*", "LICENSE-*", "README.md"]
 description = "Implementation of the TLS presentation language data format defined in RFC8446"
 readme = "README.md"
@@ -38,7 +38,7 @@ derive = ["dep:thalassa-derive"]
 thiserror = "2"
 simdutf8 = "0.1"
 static_assertions = "1"
-parsio = { version = "0.0.2", features = ["std"] }
+parsio = { version = "0.1.0-rc.1", features = ["std"] }
 thalassa-derive = { path = "./thalassa-derive", version = "0.0.4", optional = true }
 
 [profile.bench]

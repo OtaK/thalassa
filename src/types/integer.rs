@@ -1,3 +1,5 @@
+use parsio::{DepthAwareReaderGuard, Read as _};
+
 use crate::{
     TlsplDeserialize, TlsplSerialize, TlsplSize,
     error::{TlsplReadResult, TlsplWriteResult},
@@ -18,18 +20,20 @@ macro_rules! impl_int {
                 &self,
                 writer: &mut W,
             ) -> TlsplWriteResult<usize> {
-                writer.write(&self.to_be_bytes()).map_err(Into::into)
+                writer.write_all(&self.to_be_bytes())?;
+                Ok(self.tlspl_serialized_len())
             }
         }
 
-        impl<'a> TlsplDeserialize<'a> for $repr {
+        impl<'tlspl> TlsplDeserialize<'tlspl> for $repr {
             #[inline]
-            fn tlspl_deserialize_from<R: crate::io::Read<'a>>(
-                reader: &mut R,
+            fn tlspl_deserialize_from<'a, R: crate::io::Read<'tlspl>>(
+                reader: &mut crate::io::DepthAwareReaderGuard<'a, 'tlspl, R>,
             ) -> TlsplReadResult<Self>
             where
-                Self: Sized + 'a,
+                Self: Sized + 'tlspl,
             {
+                use parsio::Read as _;
                 reader
                     .read_array()
                     .map(|b| <$repr>::from_be_bytes(*b))
@@ -72,14 +76,17 @@ impl TlsplSerialize for u24 {
     #[inline]
     fn tlspl_serialize_to<W: parsio::Write>(&self, writer: &mut W) -> TlsplWriteResult<usize> {
         // First byte is always 0x00 for a u24
-        writer.write(&self.0.to_be_bytes()[1..]).map_err(Into::into)
+        writer.write_all(&self.0.to_be_bytes()[1..])?;
+        Ok(self.tlspl_serialized_len())
     }
 }
 
-impl<'a> TlsplDeserialize<'a> for u24 {
-    fn tlspl_deserialize_from<R: parsio::Read<'a>>(reader: &mut R) -> TlsplReadResult<Self>
+impl<'tlspl> TlsplDeserialize<'tlspl> for u24 {
+    fn tlspl_deserialize_from<'a, R: parsio::Read<'tlspl>>(
+        reader: &mut DepthAwareReaderGuard<'_, 'tlspl, R>,
+    ) -> TlsplReadResult<Self>
     where
-        Self: Sized + 'a,
+        Self: Sized + 'tlspl,
     {
         let array: [u8; 3] = *reader.read_array()?;
         Ok(Self(u32::from_be_bytes([
@@ -90,8 +97,9 @@ impl<'a> TlsplDeserialize<'a> for u24 {
 
 impl From<u32> for u24 {
     fn from(value: u32) -> Self {
+        const MASK: u32 = (1 << 24) - 1;
         // Mask the upper byte
-        Self(value & 0x00_FF_FF_FF)
+        Self(value & MASK)
     }
 }
 
@@ -113,16 +121,23 @@ impl TlsplSize for bool {
 impl TlsplSerialize for bool {
     #[inline]
     fn tlspl_serialize_to<W: crate::io::Write>(&self, writer: &mut W) -> TlsplWriteResult<usize> {
-        writer.write(&[*self as u8]).map_err(Into::into)
+        writer.write_all(&[*self as u8])?;
+        Ok(self.tlspl_serialized_len())
     }
 }
 
 impl<'tlspl> TlsplDeserialize<'tlspl> for bool {
     #[inline]
-    fn tlspl_deserialize_from<R: crate::io::Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self>
+    fn tlspl_deserialize_from<'a, R: crate::io::Read<'tlspl>>(
+        reader: &mut DepthAwareReaderGuard<'_, 'tlspl, R>,
+    ) -> TlsplReadResult<Self>
     where
         Self: Sized + 'tlspl,
     {
-        reader.read_byte().map(|b| b > 0).map_err(Into::into)
+        Ok(match reader.read_byte()? {
+            0 => false,
+            1 => true,
+            _ => return Err(crate::error::TlsplReadError::IllegalBool),
+        })
     }
 }

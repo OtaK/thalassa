@@ -5,7 +5,7 @@ use thalassa_derive::{TlsplDeserialize, TlsplSerialize, TlsplSize};
 
 #[derive(Debug, TlsplDeserialize, TlsplSerialize, TlsplSize)]
 struct NaiveStruct<'a> {
-    // f1: u8,
+    f1: u8,
     f2: u16,
     f3: u32,
     f4: u64,

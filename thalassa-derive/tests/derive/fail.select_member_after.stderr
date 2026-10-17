@@ -1,0 +1,5 @@
+error: this `#[tlspl(select = ...)]`-ed field MUST be declared *after* the field it targets
+  --> tests/derive/fail.select_member_after.rs:21:5
+   |
+21 |     #[tlspl(select = self.later)]
+   |     ^

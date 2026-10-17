@@ -27,7 +27,7 @@ Here: [https://docs.rs/thalassa](https://docs.rs/thalassa)
   - This basically allows to de/serialize Rust enums as TLSPL variants, but allowing to use a discriminant *not* immediately preceding the variant contents, which is currently a requirement (as with `tls_codec`). This is *extremely* common in protocols making use of TLSPL, such as MLS, MIMI or keytrans.
   - Done! It's been named `#[tlspl(select)]` and will be available in 0.0.2
 - [ ] Billion Laughs protection (recursion depth tracking)
-- [ ] Serde compat
+- [x] Serde compat - No need. Your types can derive serde to be used in another format. TLSPL is too problematic to be used with serde without massive hacks (like thread local fences and stuff like that).
 - [x] Facet compat (maybe?) - NOPE. Not happening
 - [ ] Docs improvements, examples, etc
 

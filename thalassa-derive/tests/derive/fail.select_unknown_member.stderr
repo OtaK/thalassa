@@ -1,0 +1,5 @@
+error: `#[tlspl(select = self.missing)]` does not exist
+  --> tests/derive/fail.select_unknown_member.rs:22:5
+   |
+22 |     #[tlspl(select = self.missing)]
+   |     ^

@@ -1,5 +1,7 @@
 use std::marker::PhantomData;
 
+use parsio::DepthAwareReaderGuard;
+
 use crate::{
     TlsplDeserialize, TlsplSerialize, TlsplSize,
     io::{Read, Write},
@@ -13,10 +15,10 @@ mod strings;
 
 pub use integer::u24;
 
-// TODO: MLS limits question mark?
-// Right now this uses 2^62-1 on 64 bits (which is the normal TLSPL limits)
-// and 2^30-1 on 32 bits (which is the MLS limits)
-const MAX_LEN: usize = (usize::MAX >> 2) - 1;
+// This is using the MLS limits on all platforms: 2^30-1
+// The classic TLSPL limits are stupid anyway, 2^62-1 is absurd and
+// would lead to OoM on pretty much any computer on earth: it's 4.6 exabytes.
+const MAX_LEN: usize = (1 << 30) - 1;
 
 #[inline]
 /// Returns the TLS VarInt overhead for the provided content length
@@ -72,28 +74,26 @@ impl ContentLengthLength {
 
         debug_assert_eq!(*self, Self::from_content_len(cl), "Internal API misuse");
 
-        let result = match self {
-            ContentLengthLength::Empty => Ok(0),
-            ContentLengthLength::Uint8 => writer.write(&[cl as u8]),
+        match self {
+            ContentLengthLength::Empty => return Ok(0),
+            ContentLengthLength::Uint8 => {
+                writer.write_all(&[cl as u8])?;
+            }
             ContentLengthLength::Uint16 => {
-                writer.write(&(((VARINT_U16_MARKER as u16) << 8) | (cl as u16)).to_be_bytes())
+                writer
+                    .write_all(&(((VARINT_U16_MARKER as u16) << 8) | (cl as u16)).to_be_bytes())?;
             }
             ContentLengthLength::Uint32 => {
-                writer.write(&(((VARINT_U32_MARKER as u32) << 24) | (cl as u32)).to_be_bytes())
+                writer
+                    .write_all(&(((VARINT_U32_MARKER as u32) << 24) | (cl as u32)).to_be_bytes())?;
             }
             ContentLengthLength::Uint64 => {
-                writer.write(&(((VARINT_U64_MARKER as u64) << 56) | (cl as u64)).to_be_bytes())
+                writer
+                    .write_all(&(((VARINT_U64_MARKER as u64) << 56) | (cl as u64)).to_be_bytes())?;
             }
         }
-        .map_err(Into::into);
 
-        // Sanity check for debug builds
-        #[cfg(debug_assertions)]
-        if let Ok(written) = &result {
-            assert_eq!(*written as u8, *self as u8, "Write mismatch");
-        }
-
-        result
+        Ok(*self as u8 as usize)
     }
 
     #[inline]
@@ -102,7 +102,7 @@ impl ContentLengthLength {
     ) -> crate::error::TlsplReadResult<usize> {
         let lb = reader.read_byte()?;
         let len_fb = lb & 0x3F; // Mask the first byte as it'll be used like that in all branches
-        Ok(if lb < VARINT_U16_MARKER {
+        let cl = if lb < VARINT_U16_MARKER {
             len_fb as usize
         } else if lb < VARINT_U32_MARKER {
             ((len_fb as u16) << 8 | reader.read_byte()? as u16) as usize
@@ -114,7 +114,13 @@ impl ContentLengthLength {
             let mut bytes = [len_fb, 0, 0, 0, 0, 0, 0, 0];
             bytes[1..].copy_from_slice(&reader.read_slice(7)?);
             u64::from_be_bytes(bytes).try_into()?
-        })
+        };
+
+        if cl > MAX_LEN {
+            return Err(crate::error::TlsplReadError::LengthOverflow);
+        }
+
+        Ok(cl)
     }
 }
 
@@ -138,11 +144,8 @@ impl TlsplSerialize for () {
 impl<'tlspl> TlsplDeserialize<'tlspl> for () {
     #[inline]
     fn tlspl_deserialize_from<R: Read<'tlspl>>(
-        _reader: &mut R,
-    ) -> crate::error::TlsplReadResult<Self>
-    where
-        Self: Sized + 'tlspl,
-    {
+        _reader: &mut DepthAwareReaderGuard<'_, 'tlspl, R>,
+    ) -> crate::error::TlsplReadResult<Self> {
         Ok(())
     }
 }
@@ -167,7 +170,7 @@ impl<T> TlsplSerialize for PhantomData<T> {
 impl<'tlspl, T> TlsplDeserialize<'tlspl> for PhantomData<T> {
     #[inline]
     fn tlspl_deserialize_from<R: Read<'tlspl>>(
-        _reader: &mut R,
+        _reader: &mut DepthAwareReaderGuard<'_, 'tlspl, R>,
     ) -> crate::error::TlsplReadResult<Self> {
         Ok(PhantomData)
     }

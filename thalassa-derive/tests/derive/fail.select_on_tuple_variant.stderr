@@ -1,0 +1,6 @@
+error: `#[tlspl(select = <field>)]` is pre 0.1.0 and has been removed / hard deprecated. use `self.<field>` or `self.<index>` (for tuples) instead.
+       Example: `#[tlspl(select = self.my_field.other.thing)]` or `#[tlspl(select = self.0)]` for tuples
+  --> tests/derive/fail.select_on_tuple_variant.rs:23:10
+   |
+23 |     V(D, #[tlspl(select = tuple0)] E),
+   |          ^

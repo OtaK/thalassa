@@ -1,5 +1,7 @@
 use std::borrow::Cow;
 
+use parsio::{DepthAwareReaderGuard, Read as _};
+
 use crate::{
     TlsplDeserialize, TlsplSerialize, TlsplSize,
     error::{TlsplReadResult, TlsplWriteResult},
@@ -17,7 +19,8 @@ impl<const N: usize> TlsplSize for [u8; N] {
 impl<const N: usize> TlsplSerialize for [u8; N] {
     #[inline]
     fn tlspl_serialize_to<W: crate::io::Write>(&self, writer: &mut W) -> TlsplWriteResult<usize> {
-        writer.write(&self[..]).map_err(Into::into)
+        writer.write_all(&self[..])?;
+        Ok(N)
     }
 }
 
@@ -30,7 +33,9 @@ impl<'a, const N: usize> TlsplSize for Cow<'a, [u8; N]> {
 /// Reads N bytes, not VLBytes!
 impl<'tlspl, const N: usize> TlsplDeserialize<'tlspl> for Cow<'tlspl, [u8; N]> {
     #[inline]
-    fn tlspl_deserialize_from<R: crate::io::Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self>
+    fn tlspl_deserialize_from<'a, R: crate::io::Read<'tlspl>>(
+        reader: &mut DepthAwareReaderGuard<'_, 'tlspl, R>,
+    ) -> TlsplReadResult<Self>
     where
         Self: Sized + 'tlspl,
     {
@@ -40,7 +45,9 @@ impl<'tlspl, const N: usize> TlsplDeserialize<'tlspl> for Cow<'tlspl, [u8; N]> {
 
 impl<'tlspl, const N: usize> TlsplDeserialize<'tlspl> for [u8; N] {
     #[inline]
-    fn tlspl_deserialize_from<R: crate::io::Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self>
+    fn tlspl_deserialize_from<'a, R: crate::io::Read<'tlspl>>(
+        reader: &mut DepthAwareReaderGuard<'_, 'tlspl, R>,
+    ) -> TlsplReadResult<Self>
     where
         Self: Sized + 'tlspl,
     {
@@ -73,7 +80,9 @@ impl TlsplSerialize for &[u8] {
     #[inline]
     fn tlspl_serialize_to<W: crate::io::Write>(&self, writer: &mut W) -> TlsplWriteResult<usize> {
         let cl_len = ContentLengthLength::from_content_len(self.len());
-        let written = cl_len.write_content_len(self.len(), writer)? + writer.write(self)?;
+        let mut written = cl_len.write_content_len(self.len(), writer)?;
+        writer.write_all(self)?;
+        written += self.len();
 
         debug_assert_eq!(written, self.tlspl_serialized_len(), "Write mismatch");
 
@@ -97,7 +106,9 @@ impl TlsplSerialize for Vec<u8> {
 
 impl<'tlspl> TlsplDeserialize<'tlspl> for Cow<'tlspl, [u8]> {
     #[inline]
-    fn tlspl_deserialize_from<R: crate::io::Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self>
+    fn tlspl_deserialize_from<'a, R: crate::io::Read<'tlspl>>(
+        reader: &mut DepthAwareReaderGuard<'_, 'tlspl, R>,
+    ) -> TlsplReadResult<Self>
     where
         Self: Sized + 'tlspl,
     {
@@ -108,7 +119,9 @@ impl<'tlspl> TlsplDeserialize<'tlspl> for Cow<'tlspl, [u8]> {
 
 impl<'tlspl> TlsplDeserialize<'tlspl> for Vec<u8> {
     #[inline]
-    fn tlspl_deserialize_from<R: crate::io::Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self>
+    fn tlspl_deserialize_from<'a, R: crate::io::Read<'tlspl>>(
+        reader: &mut DepthAwareReaderGuard<'_, 'tlspl, R>,
+    ) -> TlsplReadResult<Self>
     where
         Self: Sized + 'tlspl,
     {

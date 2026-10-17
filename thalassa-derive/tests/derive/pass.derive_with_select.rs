@@ -37,7 +37,7 @@ struct SelectedStruct<'a> {
     pub deep: inception::inner::deeper::DeepSeaCreature,
     pub unrelated_field: Cow<'a, [u8]>,
     pub another_unrelated_field: u64,
-    #[tlspl(select = top_dog)]
+    #[tlspl(select = self.top_dog)]
     pub wingardium_selecta: inception::inner::Test<'a>,
 }
 
@@ -56,7 +56,7 @@ struct DeepSelectStruct<'a> {
     pub deep: inception::inner::deeper::DeepSeaCreature,
     pub unrelated_field: Cow<'a, [u8]>,
     pub another_unrelated_field: u64,
-    #[tlspl(select = deep_target.inner.target)]
+    #[tlspl(select = self.deep_target.inner.target)]
     pub wingardium_selecta: inception::inner::Test<'a>,
 }
 

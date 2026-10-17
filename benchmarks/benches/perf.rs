@@ -13,8 +13,13 @@ use mls_spec2::{
     },
 };
 use std::{borrow::Cow, hint::black_box};
+use thalassa::io::DepthAwareReader;
 use thalassa::{TlsplDeserialize as _, TlsplSerialize};
 use tls_codec::Serialize as _;
+
+fn btd(bytes: &[u8]) -> DepthAwareReader<'_, &[u8]> {
+    DepthAwareReader::from_reader(bytes)
+}
 
 fn random_vec_with_len(len: usize) -> Vec<u8> {
     let mut vec = vec![0u8; len];
@@ -170,7 +175,10 @@ fn bench_thalassa_vlbytes(c: &mut Criterion) {
             || generate_vlbytes(),
             |sample| {
                 let value = black_box(
-                    Cow::<[u8]>::tlspl_deserialize_from(black_box(&mut &sample[..])).unwrap(),
+                    Cow::<[u8]>::tlspl_deserialize_from(black_box(
+                        &mut btd(&sample).enter().unwrap(),
+                    ))
+                    .unwrap(),
                 );
 
                 black_box(value[0])
@@ -181,7 +189,8 @@ fn bench_thalassa_vlbytes(c: &mut Criterion) {
 
     group.bench_function("ser", |b| {
         let sample = generate_vlbytes();
-        let value = Cow::<[u8]>::tlspl_deserialize_from(&mut &sample[..]).unwrap();
+        let value =
+            Cow::<[u8]>::tlspl_deserialize_from(&mut btd(&sample).enter().unwrap()).unwrap();
         b.iter_batched_ref(
             || Vec::with_capacity(black_box(value_len)),
             |buf| black_box(value.tlspl_serialize_to(black_box(buf)).unwrap()),
@@ -202,8 +211,10 @@ fn bench_thalassa_groupctx(c: &mut Criterion) {
             || generate_groupctx(),
             |sample| {
                 let value = black_box(
-                    ThalassaGroupContext::tlspl_deserialize_from(black_box(&mut &sample[..]))
-                        .unwrap(),
+                    ThalassaGroupContext::tlspl_deserialize_from(black_box(
+                        &mut btd(&sample).enter().unwrap(),
+                    ))
+                    .unwrap(),
                 );
 
                 black_box(value.cipher_suite)

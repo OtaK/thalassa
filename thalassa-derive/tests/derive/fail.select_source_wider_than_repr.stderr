@@ -1,0 +1,17 @@
+error[E0080]: evaluation panicked: the `#[tlspl(select = ...)]` target's repr is wider than this field's type's untagged `#[repr]`
+  --> tests/derive/fail.select_source_wider_than_repr.rs:30:5
+   |
+30 |     #[tlspl(select = self.d)]
+   |     ^ evaluation of `<Message as thalassa::TlsplDeserialize<'_>>::tlspl_deserialize_from::<&[u8]>::{constant#0}` failed here
+
+note: erroneous constant encountered
+  --> tests/derive/fail.select_source_wider_than_repr.rs:30:5
+   |
+30 |     #[tlspl(select = self.d)]
+   |     ^
+
+note: the above error was encountered while instantiating `fn <Message as TlsplDeserialize<'_>>::tlspl_deserialize_from::<&[u8]>`
+ --> $WORKSPACE/src/lib.rs
+  |
+  |         let value = Self::tlspl_deserialize_from(reader)?;
+  |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

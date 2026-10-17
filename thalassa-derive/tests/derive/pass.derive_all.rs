@@ -4,7 +4,7 @@ use std::borrow::Cow;
 
 #[derive(Debug, thalassa::TlsplAll)]
 struct NaiveStruct<'a> {
-    // f1: u8,
+    f1: u8,
     f2: u16,
     f3: u32,
     f4: u64,
