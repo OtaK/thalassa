@@ -1,9 +1,9 @@
 [package]
 name = "thalassa"
-version = "0.0.4"
+version = "0.1.0-rc.2"
 edition = "2024"
-rust-version = "1.85"
-include = ["src/**/*", "LICENSE-*", "README.md"]
+rust-version = "1.95"
+include = ["src/**/*", "LICENSE-*", "README.md", "CHANGELOG.md"]
 description = "Implementation of the TLS presentation language data format defined in RFC8446"
 readme = "README.md"
 documentation = "https://docs.rs/thalassa"
@@ -38,8 +38,8 @@ derive = ["dep:thalassa-derive"]
 thiserror = "2"
 simdutf8 = "0.1"
 static_assertions = "1"
-parsio = { version = "0.0.2", features = ["std"] }
-thalassa-derive = { path = "./thalassa-derive", version = "0.0.4", optional = true }
+parsio = { version = "=0.1.0-rc.4", features = ["std"] }
+thalassa-derive = { path = "./thalassa-derive", version = "0.1.0-rc.2", optional = true }
 
 [profile.bench]
 opt-level = 3

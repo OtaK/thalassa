@@ -1,0 +1,29 @@
+error[E0277]: a `#[tlspl(select = ...)]` field must be an enum with `#[tlspl(untagged)]`
+  --> tests/derive/fail.select_field_not_untagged.rs:23:8
+   |
+23 |     e: Vec<E>,
+   |        ^^^^^^ `Vec<E>` is not a `#[tlspl(untagged)]` enum
+   |
+   = help: the trait `thalassa::util::TlsplUntaggedEnum` is not implemented for `Vec<E>`
+   = note: declare the field as that enum type itself
+help: the trait `thalassa::util::TlsplUntaggedEnum` is implemented for `E`
+  --> tests/derive/fail.select_field_not_untagged.rs:11:17
+   |
+11 | #[derive(Debug, thalassa::TlsplAll)]
+   |                 ^^^^^^^^^^^^^^^^^^
+   = note: this error originates in the derive macro `thalassa::TlsplAll` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: a `#[tlspl(select = ...)]` field must be an enum with `#[tlspl(untagged)]`
+  --> tests/derive/fail.select_field_not_untagged.rs:22:5
+   |
+22 |     #[tlspl(select = self.d)]
+   |     ^ `Vec<E>` is not a `#[tlspl(untagged)]` enum
+   |
+   = help: the trait `thalassa::util::TlsplUntaggedEnum` is not implemented for `Vec<E>`
+   = note: declare the field as that enum type itself
+help: the trait `thalassa::util::TlsplUntaggedEnum` is implemented for `E`
+  --> tests/derive/fail.select_field_not_untagged.rs:11:17
+   |
+11 | #[derive(Debug, thalassa::TlsplAll)]
+   |                 ^^^^^^^^^^^^^^^^^^
+   = note: this error originates in the derive macro `thalassa::TlsplAll` (in Nightly builds, run with -Z macro-backtrace for more info)

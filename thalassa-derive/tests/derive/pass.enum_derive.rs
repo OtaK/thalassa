@@ -55,7 +55,7 @@ enum FieldedDiscriminantsEnum<'a> {
     Variant3 {
         potato: Cow<'a, str>,
     } = 300,
-    #[tlspl(discriminant = "FOUR_HUNDRED")]
+    #[tlspl(discriminant = FOUR_HUNDRED)]
     Variant4,
 }
 

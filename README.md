@@ -26,14 +26,17 @@ Here: [https://docs.rs/thalassa](https://docs.rs/thalassa)
 - [x] "Distant variant" feature on the derive
   - This basically allows to de/serialize Rust enums as TLSPL variants, but allowing to use a discriminant *not* immediately preceding the variant contents, which is currently a requirement (as with `tls_codec`). This is *extremely* common in protocols making use of TLSPL, such as MLS, MIMI or keytrans.
   - Done! It's been named `#[tlspl(select)]` and will be available in 0.0.2
-- [ ] Billion Laughs protection (recursion depth tracking)
-- [ ] Serde compat
+- [x] Billion Laughs protection (recursion depth tracking) - Done in 0.1.0
+  - Unfortunately that cost a breaking change (`TlsplDeserialize` now takes a `parsio::DepthAwareReaderGuard<parsio::Read>` instead of a raw `parsio::Read`). It is what it is.
+- [x] Serde compat - No need. Your types can derive serde to be used in another format. TLSPL is too problematic to be used with serde without massive hacks (like thread local fences and stuff like that).
 - [x] Facet compat (maybe?) - NOPE. Not happening
 - [ ] Docs improvements, examples, etc
 
 ## AI Disclaimer
 
-Unlike a lot of things being created currently, this library was written WITHOUT the use of any LLM.
+Unlike a lot of things being created currently, the code of this library was written WITHOUT the use of any LLM. Anything under /src was 100% hand-written.
+
+Some of the tests, on the other hand, were LLM-assisted, because I can't be bothered to write dozens of sample inputs.
 
 ## Acknowledgements
 

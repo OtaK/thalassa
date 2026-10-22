@@ -3,10 +3,10 @@
 use thalassa_derive::{TlsplDeserialize, TlsplSerialize, TlsplSize};
 
 #[derive(Debug, TlsplDeserialize, TlsplSerialize, TlsplSize)]
-struct FiveFieldTupleStruct(u32, u64, i16, bool, Option<()>);
+struct FiveFieldTupleStruct(u32, u64, u16, bool, Option<()>);
 
 #[derive(Debug, TlsplDeserialize, TlsplSerialize, TlsplSize)]
-struct ThreeFieldTupleStruct(u8, u128, i8);
+struct ThreeFieldTupleStruct(u8, u64, u32);
 
 #[derive(Debug, TlsplDeserialize, TlsplSerialize, TlsplSize)]
 struct TwoFieldTupleStruct(u32, u64);

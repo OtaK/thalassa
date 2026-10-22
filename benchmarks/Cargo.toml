@@ -11,7 +11,7 @@ tls_codec = "0.4"
 mls-spec2 = { package = "mls-spec", version = "2" }
 
 [target.'cfg(not(all(any(target_arch = "wasm32", target_arch = "wasm64"), target_os = "unknown")))'.dev-dependencies]
-gungraun = "0.19.4"
+gungraun = "0.20.0"
 criterion = "0.8"
 
 [target.'cfg(not(any(target_env = "msvc", all(any(target_arch = "wasm32", target_arch = "wasm64"), target_os = "unknown"))))'.dev-dependencies]

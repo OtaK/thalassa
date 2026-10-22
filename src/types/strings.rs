@@ -1,5 +1,7 @@
 use std::borrow::Cow;
 
+use parsio::DepthAwareReaderGuard;
+
 use crate::{
     TlsplDeserialize, TlsplSerialize, TlsplSize,
     error::{TlsplReadResult, TlsplWriteResult},
@@ -49,10 +51,9 @@ impl TlsplSerialize for String {
 
 impl<'tlspl> TlsplDeserialize<'tlspl> for Cow<'tlspl, str> {
     #[inline]
-    fn tlspl_deserialize_from<R: crate::io::Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self>
-    where
-        Self: Sized + 'tlspl,
-    {
+    fn tlspl_deserialize_from<'a, R: parsio::Read<'tlspl>>(
+        reader: &mut DepthAwareReaderGuard<'_, R>,
+    ) -> TlsplReadResult<Self> {
         let bytes = Cow::<'tlspl, [u8]>::tlspl_deserialize_from(reader)?;
         Ok(match bytes {
             Cow::Borrowed(str) => Cow::Borrowed(simdutf8::basic::from_utf8(str)?),
@@ -68,10 +69,9 @@ impl<'tlspl> TlsplDeserialize<'tlspl> for Cow<'tlspl, str> {
 
 impl<'tlspl> TlsplDeserialize<'tlspl> for String {
     #[inline]
-    fn tlspl_deserialize_from<R: crate::io::Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self>
-    where
-        Self: Sized + 'tlspl,
-    {
+    fn tlspl_deserialize_from<'a, R: parsio::Read<'tlspl>>(
+        reader: &mut DepthAwareReaderGuard<'_, R>,
+    ) -> TlsplReadResult<Self> {
         Cow::<str>::tlspl_deserialize_from(reader).map(Cow::into_owned)
     }
 }

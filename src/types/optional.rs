@@ -3,6 +3,8 @@ use crate::{
     error::{TlsplReadResult, TlsplWriteResult},
 };
 
+use parsio::{DepthAwareReaderGuard, Read as _};
+
 impl<T: TlsplSize> TlsplSize for Option<T> {
     #[inline]
     fn tlspl_serialized_len(&self) -> usize {
@@ -18,24 +20,25 @@ impl<T: TlsplSerialize> TlsplSerialize for Option<T> {
     #[inline]
     fn tlspl_serialize_to<W: crate::io::Write>(&self, writer: &mut W) -> TlsplWriteResult<usize> {
         // Write 0 or 1 depending on the presence of the value
-        let mut written = writer.write(&[self.is_some() as u8])?;
-        debug_assert_eq!(
-            written, 1,
-            "Could not even write the optional<V> byte, something is awry"
-        );
-
+        writer.write_all(&[self.is_some() as u8])?;
+        let mut written = 1;
         if let Some(value) = self {
             written += value.tlspl_serialize_to(writer)?;
         }
+
         Ok(written)
     }
 }
 
 impl<'tlspl, T: TlsplDeserialize<'tlspl> + 'tlspl> TlsplDeserialize<'tlspl> for Option<T> {
     #[inline]
-    fn tlspl_deserialize_from<R: crate::io::Read<'tlspl>>(reader: &mut R) -> TlsplReadResult<Self> {
-        (reader.read_byte()? >= 0x01)
-            .then(|| T::tlspl_deserialize_from(reader))
-            .transpose()
+    fn tlspl_deserialize_from<'a, R: parsio::Read<'tlspl>>(
+        reader: &mut DepthAwareReaderGuard<'_, R>,
+    ) -> TlsplReadResult<Self> {
+        Ok(match reader.read_byte()? {
+            0x00 => None,
+            0x01 => Some(T::tlspl_deserialize_from(&mut reader.enter()?)?),
+            _ => return Err(crate::error::TlsplReadError::IllegalOptionPrefix),
+        })
     }
 }

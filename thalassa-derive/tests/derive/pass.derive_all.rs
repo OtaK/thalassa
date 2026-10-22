@@ -4,14 +4,15 @@ use std::borrow::Cow;
 
 #[derive(Debug, thalassa::TlsplAll)]
 struct NaiveStruct<'a> {
-    // f1: u8,
+    f1: u8,
     f2: u16,
     f3: u32,
     f4: u64,
-    f5: i8,
-    f6: i16,
-    f7: i32,
-    f8: i64,
+    // All of those aren't actually a thing in TLSPL
+    // f5: i8,
+    // f6: i16,
+    // f7: i32,
+    // f8: i64,
     bytes_cow: Cow<'a, [u8]>,
 }
 
