@@ -1,0 +1,71 @@
+error[E0277]: `u8` doesn't implement `TlsplSize` or is not a TLSPL type
+  --> tests/derive/fail.u8_typ_alias.rs:11:5
+   |
+11 |     a: Byte,
+   |     ^ the trait `TlsplSize` is not implemented for `u8`
+   |
+   = note: not every Rust type has one:
+               - `u8` deliberately has no impls; write a uint8 field literally as `u8` (the derive enables it),
+                 and keep it a literal: an alias (`type B = u8;`, `use core::primitive::u8 as B;`) wouldn't work.
+               - Floating-points (`f32`/`f64`) have no representation in TLSPL
+               - `usize` and `isize` are not wire-stable as it depends on your target's pointer width, so no dice either
+               - signed integers have no representation in TLSPL
+               - Btw: use `Cow<[u8]>`/`Vec<u8>`/`&[u8]`/`String`/`&str` for VLBytes.
+   = help: the following other types implement trait `TlsplSize`:
+             &T
+             &[T]
+             &[u8]
+             &str
+             ()
+             (A, B)
+             (A, B, C)
+             (A, B, C, D)
+           and $N others
+
+error[E0277]: `u8` doesn't implement `TlsplSerialize` or is not a TLSPL type
+  --> tests/derive/fail.u8_typ_alias.rs:11:5
+   |
+11 |     a: Byte,
+   |     ^ the trait `TlsplSerialize` is not implemented for `u8`
+   |
+   = note: not every Rust type has one:
+                   - `u8` deliberately has no impls; write a uint8 field literally as `u8` (the derive enables it),
+                       and keep it a literal: an alias (`type B = u8;`, `use core::primitive::u8 as B;`) wouldn't work.
+                   - Floating-points (`f32`/`f64`) have no representation in TLSPL
+                   - `usize` and `isize` are not wire-stable as it depends on your target's pointer width, so no dice either
+                   - signed integers have no representation in TLSPL
+                   - Btw: use `Cow<[u8]>`/`Vec<u8>`/`&[u8]`/`String`/`&str` for VLBytes.
+   = help: the following other types implement trait `TlsplSerialize`:
+             &T
+             &[T]
+             &[u8]
+             &str
+             ()
+             (A, B)
+             (A, B, C)
+             (A, B, C, D)
+           and $N others
+
+error[E0277]: `u8` doesn't implement `TlsplDeserialize` or is not a TLSPL type
+  --> tests/derive/fail.u8_typ_alias.rs:11:5
+   |
+11 |     a: Byte,
+   |     ^ the trait `TlsplDeserialize<'_>` is not implemented for `u8`
+   |
+   = note: not every Rust type has one:
+               - `u8` deliberately has no impls; write a uint8 field literally as `u8` (the derive enables it),
+                 and keep it a literal: an alias (`type B = u8;`, `use core::primitive::u8 as B;`) wouldn't work.
+               - Floating-points (`f32`/`f64`) have no representation in TLSPL
+               - `usize` and `isize` are not wire-stable as it depends on your target's pointer width, so no dice either
+               - signed integers have no representation in TLSPL
+               - Btw: use `Cow<[u8]>`/`Vec<u8>`/`&[u8]`/`String`/`&str` for VLBytes.
+   = help: the following other types implement trait `TlsplDeserialize<'tlspl>`:
+             ()
+             (A, B)
+             (A, B, C)
+             (A, B, C, D)
+             (A, B, C, D, E)
+             Aliased
+             BTreeMap<K, V>
+             BTreeSet<V>
+           and $N others

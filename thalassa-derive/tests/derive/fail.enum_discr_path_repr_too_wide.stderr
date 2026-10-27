@@ -1,0 +1,17 @@
+error[E0080]: evaluation panicked: this `#[tlspl(discriminant = ...)]` target overflows this enum's `repr`
+  --> tests/derive/fail.enum_discr_path_repr_too_wide.rs:11:5
+   |
+11 |     #[tlspl(discriminant = "Source::S1")]
+   |     ^ evaluation of `<Narrow as thalassa::TlsplSerialize>::tlspl_serialize_to::__THALASSA_Variant1` failed here
+
+error[E0080]: evaluation panicked: this `#[tlspl(discriminant = ...)]` target overflows this enum's `repr`
+  --> tests/derive/fail.enum_discr_path_repr_too_wide.rs:11:5
+   |
+11 |     #[tlspl(discriminant = "Source::S1")]
+   |     ^ evaluation of `<Narrow as thalassa::TlsplDeserialize<'tlspl>>::tlspl_deserialize_from::__THALASSA_Variant1` failed here
+
+note: erroneous constant encountered
+  --> tests/derive/fail.enum_discr_path_repr_too_wide.rs:12:5
+   |
+12 |     Variant1 { thing: bool },
+   |     ^^^^^^^^

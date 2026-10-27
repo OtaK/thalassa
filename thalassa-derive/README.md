@@ -18,15 +18,18 @@ Note: A lot of this is similar to tls_codec's derives, in an effort to ease migr
 
 ### On Enum Variants
 
-- `#[tlspl(discrmininant = "path::to::constant"|1337)]` - Allows to point to a discriminant tag for cases where it's not supported by the Rust language (eg complex data types/structs where explicit discriminant isn't allowed).
+- `#[tlspl(discriminant = <discriminant>)]` - Allows to point to a discriminant tag for cases where it's not supported by the Rust language (eg complex data types/structs where explicit discriminant isn't allowed).
   - This also supports the following forms
     - integer literals: `#[tlspl(discriminant = 69)]`
-    - constants: `#[tlspl(discriminant = "MY_CONST")]` - note: wrapped in a string
+    - constant expressions: `#[tlspl(discriminant = MY_CONST)]`, `#[tlspl(discriminant = 1 + 1)]` or `#[tlspl(discriminant = u8::MAX)]`.
+      - Those expressions are computed at compile time and are checked against the bounds of the `#[repr]` of the enclosing `enum` to prevent silent truncation.
     - enum variants that have an explicit discriminant: `#[tlspl(discriminant = "MyEnum::CaseN")]` - note: wrapped in a string
+      - Again, this is checked against the bounds of the `enclosing` enum's `#[repr]` to prevent silent truncation.
 - `#[tlspl(other)]` - Marks a "catch-all" or "unknown" variant that needs to be a tuple having 1 field equal to the #[repr] of the enum (for naked enums), or 2 fields equal to `(repr, Cow<[u8]>)` (for enums that have data)
   - Example
 
-```rust,ignore
+```rust
+# use thalassa_derive::*;
 #[derive(TlsplSize, TlsplDeserialize, TlsplSerialize)]
 #[repr(u8)]
 enum Thing {
@@ -63,11 +66,13 @@ enum ThingWithData<'a> {
 - `#[tlspl(select = field.member.thing)]` - mirrors the `select` keyword in TLSPL prose found in specifications.
   - Restrictions
      1. The targeted field must be declared *BEFORE* this field. The order of declaration matters in TLSPL.
-     2. The type of the field with this attribute must be an enum that has `#[tlspl(untagged)]`
+     2. The type of the field with this attribute MUST be an `enum` that has `#[tlspl(untagged)]`
+     3. The targeted field MUST implement `Copy`. You can also provide `select = field.clone()` to bypass this, but this isn't recommended
   - Example
 
-```rust,ignore
-#[derive(TlsplAll)]
+```rust
+# use thalassa_derive::*;
+#[derive(Copy, Clone, TlsplAll)]
 #[repr(u8)]
 pub enum FieldDiscriminant {
     Variant1 = 0x01,
@@ -76,6 +81,7 @@ pub enum FieldDiscriminant {
 
 #[derive(TlsplAll)]
 #[tlspl(untagged)]
+#[repr(u8)]
 pub enum FieldContents {
     #[tlspl(discriminant = "FieldDiscriminant::Variant1")]
     Variant1,
@@ -89,10 +95,8 @@ pub enum FieldContents {
 pub struct ComplexStructure<'a> {
     pub field_type: FieldDiscriminant,
     pub unrelated_field: u64,
-    pub another_field: Cow<'a, [u8]>,
-    #[tlspl(select = field_type)]
+    pub another_field: std::borrow::Cow<'a, [u8]>,
+    #[tlspl(select = self.field_type)]
     pub field_contents: FieldContents,
 }
 ```
-
-- Enum Variants

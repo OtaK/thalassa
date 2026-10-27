@@ -1,8 +1,8 @@
 [package]
 name = "thalassa-derive"
-version = "0.0.4"
+version = "0.1.0-rc.6"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.95"
 include = ["src/**/*", "LICENSE-*", "README.md"]
 description = "`thalassa` derive macros"
 readme = "README.md"
@@ -19,8 +19,8 @@ proc-macro = true
 [dependencies]
 proc-macro2 = "1"
 quote = "1"
-syn = "2"
-darling = "0.23"
+syn = "3"
+darling = "0.24"
 bitflags = "2"
 
 [dev-dependencies]

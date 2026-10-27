@@ -1,0 +1,11 @@
+error[E0080]: evaluation panicked: `Mismatched::Variant1`: its native discriminant (`SOME_CONST`) and its `#[tlspl(discriminant = ...)]` disagree
+ --> tests/derive/fail.enum_discr_attr_mismatch.rs:8:5
+  |
+8 |     #[tlspl(discriminant = 7)]
+  |     ^ evaluation of `<Mismatched as thalassa::TlsplSerialize>::tlspl_serialize_to::_` failed here
+
+error[E0080]: evaluation panicked: `Mismatched::Variant1`: its native discriminant (`SOME_CONST`) and its `#[tlspl(discriminant = ...)]` disagree
+ --> tests/derive/fail.enum_discr_attr_mismatch.rs:8:5
+  |
+8 |     #[tlspl(discriminant = 7)]
+  |     ^ evaluation of `<Mismatched as thalassa::TlsplDeserialize<'tlspl>>::tlspl_deserialize_from::_` failed here
