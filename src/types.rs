@@ -152,6 +152,24 @@ impl ContentLengthLength {
 
         Ok(cl)
     }
+
+    /// [`Self::read_content_len`], then fails early with [`Incomplete`] if the reader knows it
+    /// holds fewer than the announced bytes. Lets incremental decoders wait for the whole field
+    /// instead of reparsing on every new byte.
+    ///
+    /// [`Incomplete`]: crate::error::TlsplReadError::Incomplete
+    #[inline]
+    pub(crate) fn read_content_len_available<'a, R: Read<'a>>(
+        reader: &mut R,
+    ) -> crate::error::TlsplReadResult<usize> {
+        let len = Self::read_content_len(reader)?;
+        match reader.remaining() {
+            Some(r) if r < len => {
+                Err(crate::error::TlsplReadError::Incomplete { missing: len - r })
+            }
+            _ => Ok(len),
+        }
+    }
 }
 
 impl TlsplSize for () {

@@ -7,6 +7,7 @@ pub struct CustomError {
 }
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum TlsplWriteError {
     #[error(transparent)]
     Parsio(#[from] parsio::WriteError),
@@ -14,6 +15,12 @@ pub enum TlsplWriteError {
     LengthOverflow,
     #[error(transparent)]
     Custom(Box<CustomError>),
+}
+
+impl From<std::io::Error> for TlsplWriteError {
+    fn from(e: std::io::Error) -> Self {
+        Self::Parsio(e.into())
+    }
 }
 
 impl TlsplWriteError {
@@ -44,6 +51,7 @@ impl std::fmt::Display for FmtTrailing {
 }
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum TlsplReadError {
     #[error(transparent)]
     Parsio(#[from] parsio::ReadError),
@@ -82,8 +90,25 @@ pub enum TlsplReadError {
     ContentLengthMismatch { expected: usize, got: usize },
     #[error("The element <T> of this collection is zero-sized. This is not allowed in TLSPL")]
     ZeroSizedCollectionElement,
+    /// Zero-byte frames can never make progress in a stream.
+    #[error("A frame consumed no bytes; a zero-sized item type cannot be framed in a stream")]
+    ZeroSizedFrame,
+    /// The input ended inside a length-prefixed field; `missing` more bytes are needed at least.
+    /// Only returned by readers that know their length (in-memory slices).
+    #[error("Input truncated: at least {missing} more byte(s) needed")]
+    Incomplete { missing: usize },
+    #[error("Frame exceeds the maximum frame length of {max} bytes")]
+    FrameTooLarge { max: usize },
+    #[error("A value overruns the length-prefixed field enclosing it")]
+    NestedTruncation,
     #[error(transparent)]
     Custom(Box<CustomError>),
+}
+
+impl From<std::io::Error> for TlsplReadError {
+    fn from(e: std::io::Error) -> Self {
+        Self::Parsio(e.into())
+    }
 }
 
 impl TlsplReadError {
@@ -92,6 +117,28 @@ impl TlsplReadError {
             krate: calling_crate,
             message: message.into(),
         }))
+    }
+
+    /// `true` when the input simply ended early: more bytes could still make it parse.
+    pub fn is_truncation(&self) -> bool {
+        matches!(
+            self,
+            Self::Incomplete { .. }
+                | Self::Parsio(parsio::ReadError::IoError(
+                    std::io::ErrorKind::UnexpectedEof
+                ))
+        )
+    }
+
+    /// Turns a truncation into [`Self::NestedTruncation`]: used where the input is an already
+    /// complete sub-buffer, so running short means malformed, not "wait for more bytes".
+    #[doc(hidden)]
+    pub fn seal_truncation(self) -> Self {
+        if self.is_truncation() {
+            Self::NestedTruncation
+        } else {
+            self
+        }
     }
 }
 

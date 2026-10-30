@@ -239,12 +239,51 @@ fn bench_thalassa_groupctx(c: &mut Criterion) {
     group.finish();
 }
 
+/// Prices the codec (owned output via `Detached`) against a zero-copy slice parse.
+fn bench_codec(c: &mut Criterion) {
+    use asynchronous_codec::{BytesMut, Decoder as _};
+    use thalassa::codec::TlsplCodec;
+
+    for payload_len in [100, 1 << 20] {
+        let sample = random_vec_with_len(payload_len).tlspl_serialize().unwrap();
+        let mut group = c.benchmark_group(format!("codec_vlbytes({})", sample.len()));
+        group.throughput(Throughput::Bytes(sample.len() as u64));
+
+        group.bench_function("slice", |b| {
+            b.iter(|| {
+                let value = Cow::<[u8]>::tlspl_deserialize_from(
+                    &mut btd(black_box(&sample)).enter().unwrap(),
+                )
+                .unwrap();
+                black_box(value.len())
+            });
+        });
+
+        group.bench_function("codec", |b| {
+            b.iter_batched_ref(
+                || {
+                    (
+                        TlsplCodec::<Vec<u8>>::new(usize::MAX),
+                        BytesMut::from(&sample[..]),
+                    )
+                },
+                |(codec, buf)| black_box(codec.decode(buf).unwrap().unwrap().len()),
+                BatchSize::SmallInput,
+            );
+        });
+
+        group.finish();
+    }
+}
+
 fn perf(c: &mut Criterion) {
     bench_tls_codec::<GroupContext>("group_context", generate_groupctx, c);
     bench_thalassa_groupctx(c);
 
     bench_tls_codec::<tls_codec::VLBytes>("vlbytes", generate_vlbytes, c);
     bench_thalassa_vlbytes(c);
+
+    bench_codec(c);
 }
 
 criterion_group!(benches, perf);

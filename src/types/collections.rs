@@ -122,7 +122,7 @@ impl<'tlspl, T: TlsplDeserialize<'tlspl> + 'tlspl> TlsplDeserialize<'tlspl> for 
     where
         Self: Sized + 'tlspl,
     {
-        let length = ContentLengthLength::read_content_len(reader)?;
+        let length = ContentLengthLength::read_content_len_available(reader)?;
         let mut values = Vec::with_capacity(4);
         let before = reader.remaining();
         let mut reader = reader.enter()?;
@@ -179,7 +179,7 @@ impl<'tlspl, V: TlsplDeserialize<'tlspl> + std::hash::Hash + Eq + 'tlspl> TlsplD
     where
         Self: Sized + 'tlspl,
     {
-        let length = ContentLengthLength::read_content_len(reader)?;
+        let length = ContentLengthLength::read_content_len_available(reader)?;
         let mut amt_read = 0usize;
         let mut values = std::collections::HashSet::new();
         let before = reader.remaining();
@@ -239,7 +239,7 @@ impl<'tlspl, V: TlsplDeserialize<'tlspl> + Ord + 'tlspl> TlsplDeserialize<'tlspl
     where
         Self: Sized + 'tlspl,
     {
-        let length = ContentLengthLength::read_content_len(reader)?;
+        let length = ContentLengthLength::read_content_len_available(reader)?;
         let mut amt_read = 0usize;
         let mut values = std::collections::BTreeSet::new();
         let before = reader.remaining();
@@ -306,7 +306,7 @@ impl<
     where
         Self: Sized + 'tlspl,
     {
-        let length = ContentLengthLength::read_content_len(reader)?;
+        let length = ContentLengthLength::read_content_len_available(reader)?;
         let mut amt_read = 0usize;
         let mut pairs = Self::default();
         let before = reader.remaining();
@@ -373,7 +373,7 @@ impl<'tlspl, K: TlsplDeserialize<'tlspl> + 'tlspl + Ord, V: TlsplDeserialize<'tl
     where
         Self: Sized + 'tlspl,
     {
-        let length = ContentLengthLength::read_content_len(reader)?;
+        let length = ContentLengthLength::read_content_len_available(reader)?;
         let mut amt_read = 0usize;
         let mut pairs = Self::default();
         let before = reader.remaining();

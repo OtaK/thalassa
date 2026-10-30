@@ -5,7 +5,8 @@ edition = "2024"
 publish = false
 
 [dependencies]
-thalassa = { path = "..", features = ["derive"] }
+thalassa = { path = "..", features = ["derive", "futures-codec"] }
+asynchronous-codec = "0.7"
 rand = "0.10"
 tls_codec = "0.4"
 mls-spec2 = { package = "mls-spec", version = "2" }

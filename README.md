@@ -14,6 +14,11 @@ This includes a derive proc macro heavily inspired by [tls_codec](https://crates
 
 Compatible with WASM.
 
+## Features
+
+- `derive`: `#[derive(TlsplSize, TlsplSerialize, TlsplDeserialize)]` (or `TlsplAll`).
+- `futures-codec`: `thalassa::codec::TlsplCodec<T>`, an [`asynchronous-codec`](https://crates.io/crates/asynchronous-codec) `Decoder`/`Encoder`. Wrap any futures-io `AsyncRead`/`AsyncWrite` in `Framed::new(io, TlsplCodec::<T>::new(max_frame_len))` to get a `Stream` of `T` and a `Sink` of `T` (`TlsplCodec<&U>` encodes by reference, borrowed types included). Decoded values are owned (copied out of the read buffer).
+
 ## Documentation
 
 Here: [https://docs.rs/thalassa](https://docs.rs/thalassa)

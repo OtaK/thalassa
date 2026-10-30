@@ -3,6 +3,9 @@
 
 use crate::error::{TlsplReadResult, TlsplWriteResult};
 
+#[cfg(feature = "futures-codec")]
+#[cfg_attr(docsrs, doc(cfg(feature = "futures-codec")))]
+pub mod codec;
 pub mod error;
 pub mod types;
 pub mod util;

@@ -1835,6 +1835,24 @@ impl TlsplDeriveTarget {
                     quote!(_ => return Err(thalassa::error::TlsplReadError::UnknownEnumDiscriminant(discriminant.into())))
                 };
 
+                let match_block = quote! {
+                    Ok(match discriminant {
+                        #(#variant_arms)*
+                        #catchall_block
+                    })
+                };
+
+                // The variant is parsed out of a fully read blob: running short there is malformed
+                // input, not a truncated stream, so incremental decoders must not wait on it.
+                let body = if attr.extensible.is_present() {
+                    quote! {
+                        let value = (|| -> thalassa::error::TlsplReadResult<Self> { #match_block })();
+                        value.map_err(thalassa::error::TlsplReadError::seal_truncation)
+                    }
+                } else {
+                    match_block
+                };
+
                 quote_spanned! { span=>
                     #[automatically_derived]
                     impl #impl_generics thalassa::TlsplDeserialize<'tlspl> for #ident #ty_generics #where_c {
@@ -1847,10 +1865,7 @@ impl TlsplDeriveTarget {
                             #discriminants_ts
                             #discr_block
                             #extensible_bootstrap
-                            Ok(match discriminant {
-                                #(#variant_arms)*
-                                #catchall_block
-                            })
+                            #body
                         }
                     }
                 }

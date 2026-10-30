@@ -126,7 +126,7 @@ impl<'tlspl> TlsplDeserialize<'tlspl> for Cow<'tlspl, [u8]> {
     where
         Self: Sized + 'tlspl,
     {
-        let length = ContentLengthLength::read_content_len(reader)?;
+        let length = ContentLengthLength::read_content_len_available(reader)?;
         reader.read_slice(length).map_err(Into::into)
     }
 }
@@ -139,7 +139,7 @@ impl<'tlspl> TlsplDeserialize<'tlspl> for CowDeque<'tlspl> {
     where
         Self: Sized + 'tlspl,
     {
-        let length = ContentLengthLength::read_content_len(reader)?;
+        let length = ContentLengthLength::read_content_len_available(reader)?;
         reader
             .read_slice(length)
             .map_err(Into::into)
@@ -180,5 +180,17 @@ mod tests {
         for len in [0usize, 1, 0x3f, 0x40, 0x41, 0x3fff, 0x4000, 0x4001, 1 << 20] {
             round_trip(len);
         }
+    }
+
+    #[test]
+    fn truncated_slice_reports_missing_bytes() {
+        let bytes = vec![7u8; 300].tlspl_serialize().expect("serialize");
+        let cut = &bytes[..bytes.len() - 42];
+        let mut reader = DepthAwareReader::from_reader(cut);
+        let mut guard = reader.enter().expect("enter");
+        assert!(matches!(
+            Vec::<u8>::tlspl_deserialize_from(&mut guard),
+            Err(crate::error::TlsplReadError::Incomplete { missing: 42 })
+        ));
     }
 }

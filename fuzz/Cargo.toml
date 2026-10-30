@@ -9,11 +9,19 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-thalassa = { path = ".." }
+thalassa = { path = "..", features = ["futures-codec"] }
+asynchronous-codec = "0.7"
 
 [[bin]]
 name = "roundtrip"
 path = "fuzz_targets/roundtrip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "codec_splits"
+path = "fuzz_targets/codec_splits.rs"
 test = false
 doc = false
 bench = false

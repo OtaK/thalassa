@@ -11,7 +11,9 @@ fuzz_target!(|data: &[u8]| {
 
     assert_eq!(data.tlspl_serialized_len(), serialized.len());
 
-    let Ok(deserialized) = Cow::<[u8]>::tlspl_deserialize_from(&mut serialized.as_slice()) else {
+    let mut reader = thalassa::io::DepthAwareReader::from_reader(serialized.as_slice());
+    let mut guard = reader.enter().expect("enter");
+    let Ok(deserialized) = Cow::<[u8]>::tlspl_deserialize_from(&mut guard) else {
         return;
     };
 

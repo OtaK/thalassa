@@ -16,7 +16,12 @@ Nothing here changes the bytes emitted for valid data, with one exception: enums
   - Wrap the reader with `thalassa::io::DepthAwareReader::from_reader(..)`, then `.enter()`. Default limit is set to 256, override with `from_reader_with_limit`.
   - Serialization is deliberately *not* depth-tracked, so footguns beware (I'm not your dad).
 - `TlsplDeserialize::tlspl_deserialize_from_complete`: errors out unless the buffer has been entirely consumed.
-- `TlsplReadError` variants: `LengthOverflow`, `DuplicateMapKey`, `IllegalBool`, `IllegalOptionPrefix`, `MissingEnumDiscriminant { enum_type }`, `TrailingBytes { extra }`, `ContentLengthMismatch { expected, got }`, `ZeroSizedCollectionElement`.
+- `TlsplReadError` variants: `LengthOverflow`, `DuplicateMapKey`, `IllegalBool`, `IllegalOptionPrefix`, `MissingEnumDiscriminant { enum_type }`, `TrailingBytes { extra }`, `ContentLengthMismatch { expected, got }`, `ZeroSizedCollectionElement`, `ZeroSizedFrame`, `Incomplete { missing }`, `FrameTooLarge { max }`, `NestedTruncation`.
+- `futures-codec` feature: `thalassa::codec::TlsplCodec<T>` implements `asynchronous_codec::{Decoder, Encoder}`, so `Framed::new(io, TlsplCodec::new(max_frame_len))` is a `Stream<Item = Result<T, _>>` + `Sink<T>` over any futures-io `AsyncRead`/`AsyncWrite`.
+  - Decoded values are owned (`T: TlsplDeserialize<'static>`), copied out of the read buffer through `parsio::Detached`.
+  - `max_frame_len` is required: a length prefix announcing more than that fails right away with `FrameTooLarge` instead of buffering.
+  - Truncated input waits for more bytes; any other error is terminal. After one, the codec drops everything it is fed and the stream ends at EOF.
+- `TlsplReadError::is_truncation()`; `From<std::io::Error>` for `TlsplReadError` and `TlsplWriteError` (only the `ErrorKind` is kept).
 - `#[diagnostic::on_unimplemented]` on `TlsplSize`/`TlsplDeserialize`/`TlsplSerialize` and `#[diagnostic::do_not_recommend]` on the derivable impls - a non-TLSPL field now says which type and why, instead of a boring `E0277`.
 - Derive: expression discriminants (`SOME_CONST`, `1 + 1`, `u8::MAX`) are emitted verbatim and cross-checked against the native discriminant at const evaluation.
 - Tests: Added more fixtures, and a few tests. LLM-assisted, as per the README.
@@ -44,7 +49,10 @@ Nothing here changes the bytes emitted for valid data, with one exception: enums
   - `i8`..`i128` and `u128` are extensions to TLSPL: fixed width, big-endian, two's complement for the signed ones.
   - `usize`/`isize` stay out: pointer width is not wire-stable.
   - `u8` still has none because it cannot be done (clashes with `&[u8]` impls) until specialization stabilizes in rustc.
-- **Breaking:** the nine new error variants break exhaustive `match` on `TlsplReadError`.
+- **Breaking:** the new error variants break exhaustive `match` on `TlsplReadError`; both `TlsplReadError` and `TlsplWriteError` are now `#[non_exhaustive]`, so future variants won't.
+- **Breaking:** a vector/bytes field whose length prefix announces more bytes than an in-memory slice holds fails early with `Incomplete { missing }` instead of `Parsio(IoError(UnexpectedEof))`. Readers of unknown length (`StdReader`) are unchanged.
+- `#[tlspl(extensible)]`: a variant running short inside its (complete) length-prefixed buffer returns `NestedTruncation` instead of `UnexpectedEof`/`Incomplete`, since more input can't fix it.
+- Bumped `parsio` to `0.1.0-rc.7`.
 - **Breaking:** input that previously decoded weirdly now errors, or encodes to different bytes:
   - non-literal native discriminants are now emitted on the wire correctly
     - For example, previously, an enum like below would emit wire discriminants of `0,1,2` while the correct, intuitive values would be `0,5,6`, since `SOME_CONST` bumps the
